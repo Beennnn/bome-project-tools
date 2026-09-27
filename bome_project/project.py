@@ -75,15 +75,28 @@ VIDE = "None"                      # un sortant absent s'ecrit ainsi
 
 
 def bome_ouvert() -> bool:
-    return subprocess.run(["pgrep", "-f", "MIDITranslatorPro"],
+    """True si MIDI Translator Pro tourne.
+
+    `pgrep -x` sur le nom EXACT du processus, et non `pgrep -f` sur la ligne de
+    commande : cette derniere matche aussi le shell qui l'invoque, puisque sa propre
+    ligne contient le motif. Le doute a coute un diagnostic errone -- on a cru a un
+    faux positif alors que Bome tournait vraiment.
+
+    Elle ne distingue pas « projet ferme » de « application quittee », et c'est
+    voulu : tant que le processus vit, il garde le projet en memoire et le reecrira.
+    Fermer la fenetre ne suffit pas, il faut quitter.
+    """
+    return subprocess.run(["pgrep", "-x", "MIDITranslatorPro"],
                           capture_output=True).returncode == 0
 
 
 def refuse_si_ouvert() -> None:
     """A appeler avant toute ecriture. Voir la regle 8."""
     if bome_ouvert():
-        raise SystemExit("Bome MIDI Translator est ouvert : il ecraserait le fichier "
-                         "depuis sa memoire a la prochaine sauvegarde. Le fermer.")
+        raise SystemExit(
+            "Bome MIDI Translator tourne : il garde le projet en memoire et le "
+            "reecrira a la prochaine sauvegarde.\n"
+            "Fermer la FENETRE ne suffit pas -- il faut quitter l'application.")
 
 
 @dataclass
