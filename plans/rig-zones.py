@@ -33,6 +33,7 @@ which is why the run refuses to start without it.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -42,7 +43,10 @@ import mido                                                        # noqa: E402
 from bome_project.probe import Case, find_trigger, run, triggers   # noqa: E402
 from bome_project.project import bome_running                      # noqa: E402
 
-CONFIG = Path.home() / "dev/music/rig-private/bome/Ben_config.bmtp"
+# The project this plan describes. Point BMTP at your own to adapt it -- everything
+# below reads channels and numbers FROM that file, so only the preset indices and the
+# PANIC contract are specific to one rig.
+CONFIG = Path(os.environ.get("BMTP", Path.home() / "MyProject.bmtp")).expanduser()
 PORT = "Rig Bus"
 ZONES_STATE, ZONES_CTRL = 6, 8
 
