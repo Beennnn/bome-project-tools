@@ -40,7 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import mido                                                        # noqa: E402
-from bome_project.probe import Case, find_trigger, run, triggers   # noqa: E402
+from bome_project.probe import Case, find_any, find_trigger, run, triggers  # noqa: E402
 from bome_project.project import bome_running                      # noqa: E402
 
 # The project this plan describes. Point BMTP at your own to adapt it -- everything
@@ -82,7 +82,9 @@ def controller_cases(trigs: list) -> list[Case]:
     destinations always receive, unconditionally. A Perform would save nothing — it only
     collapses the crossings of a product, and there is no product.
     """
-    t = find_trigger(trigs, ZONES_CTRL, 1)                         # CC1 modulation
+    # This preset captures the controller number into a variable -- it forwards ANY
+    # CC -- so there is no number to look up, only a kind and a channel.
+    t = find_any(trigs, ZONES_CTRL, "ControlChange")
     return [Case(
         title=f"CC1 ch{t.channel} modulation -> 3 zones",
         send=mido.Message("control_change", channel=t.channel - 1, control=1, value=64),
@@ -132,11 +134,20 @@ def main() -> int:
     trigs = triggers(CONFIG)
     print(f"{CONFIG.name} · {len(trigs)} MIDI incoming actions in active presets\n")
     total = 0
-    for title, cases in (("A · PANIC", panic_cases(trigs)),
-                         ("B · CONTROLLERS", controller_cases(trigs)),
-                         ("C · GUARDS — expected silence", guard_cases(trigs))):
+    for title, build in (("A · PANIC", panic_cases),
+                         ("B · CONTROLLERS", controller_cases),
+                         ("C · GUARDS — expected silence", guard_cases)):
         print(f"╔═ {title} " + "═" * max(0, 60 - len(title)))
-        total += run(PORT, cases)
+        try:
+            cases = build(trigs)
+        except LookupError as e:
+            # A section that cannot even be BUILT must not take the others down with
+            # it: the first run of this plan died before case one because a later
+            # section raised while the tuple was being evaluated.
+            print(f"  section skipped — {e}")
+            total += 1
+        else:
+            total += run(PORT, cases)
         print()
     print("=" * 82)
     print("VERDICT:", "all conforming" if not total else f"{total} mismatch(es) to inspect")

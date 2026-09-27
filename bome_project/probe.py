@@ -86,6 +86,19 @@ def find_trigger(all_triggers: list[Trigger], preset: int, number: int) -> Trigg
     raise LookupError(f"no trigger with number {number} in preset {preset}")
 
 
+def find_any(all_triggers: list[Trigger], preset: int, kind: str) -> Trigger:
+    """The first trigger of a preset matching a message KIND, whatever its number.
+
+    Some translators capture the controller number into a variable rather than
+    fixing it -- `<Value1 var="rr"/>` means "any CC". There is no number to look up
+    then, and asking for one raises on a configuration that is perfectly correct.
+    """
+    for t in all_triggers:
+        if t.preset == preset and t.kind == kind:
+            return t
+    raise LookupError(f"no {kind} trigger in preset {preset}")
+
+
 # ── send, listen, compare ───────────────────────────────────────────────────────
 
 @dataclass
