@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/banner.svg" alt="bome-project-tools" width="100%"></p>
+
 # bome-project-tools
 
 **Read, audit and safely rewrite Bome MIDI Translator Pro project files.** The `.bmtp`
@@ -63,7 +65,8 @@ PresetSwitchIgnore=0
 7. **The XML prefix names the action type**: `MID3` for MIDI, `Prfm` for a Perform. It
    is not decorative — Bome uses it to pick its parser.
 8. **Bome rewrites the file from memory on save.** Editing while it is open means losing
-   your work at the next ⌘S. `refuse_si_ouvert()` exists for that.
+   your work at the next ⌘S. `refuse_if_running()` exists for that — and closing the project WINDOW is not
+   enough, the application has to quit.
 9. **Editing invalidates the signature.** The file still opens in MIDI Translator Pro,
    but BomeBox and MT Player refuse it. Only Bome can sign: the remedy is to open the
    project and save. Observed on a real rig — an invalid signature lived five days with
@@ -99,10 +102,15 @@ above, five of ten presets listen to hardware, and no script can inject into tho
 | a virtual port (`Rig Bus`) | **yes** |
 | `P-Series`, `Breath Controller`, `Seaboard` | no — needs hands |
 
-Which is an argument for routing hardware **through a virtual port** and having the
-logic listen to that instead: it makes the logic testable, and adding a second keyboard
-stops meaning duplicating every translator. Bome's built-in MIDI Router does port-to-port
-without spending a translator at all.
+Which is an argument for a **port alias**: point one at the hardware, have every
+translator inherit it from the preset's `DefaultInPorts`, and reassign it to a virtual
+port when you want to test. Two traps found doing exactly that on a real rig — Bome
+**expands** an alias into each incoming action rather than resolving it at run time, and
+a port named on the translator **overrides** the preset default, so setting the default
+without also removing those names leaves it pure decoration.
+
+Bome's built-in MIDI Router does port-to-port thru without spending a translator, but it
+does not remap: it replaces nothing whose translators change channel.
 
 `plans/rig-zones.py` shows the shape: cases that assert what comes out, and **cases that
 assert silence**. The second kind is not optional — a plan that misses its target
@@ -117,11 +125,11 @@ pip install mido python-rtmidi
 
 python3 -c "
 from pathlib import Path
-from bome_project.project import Projet
-p = Projet(Path('MyProject.bmtp'))
+from bome_project.project import Project
+p = Project(Path('MyProject.bmtp'))
 for n, pr in sorted(p.presets.items()):
-    print(n, pr.nom, len(pr.translators), 'translators',
-          '' if pr.actif else '(inactive)')
+    print(n, pr.name, len(pr.translators), 'translators',
+          '' if pr.active else '(inactive)')
 "
 
 python3 plans/rig-zones.py          # drive real MIDI, print a verdict

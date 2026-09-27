@@ -179,7 +179,7 @@ class Preset:
         return f"[Preset.{self.number}]\n" + "\n".join(sorted(lines, key=rank))
 
 
-class Projet:
+class Project:
     """A .bmtp file, read into objects and written back byte-identical when unchanged."""
 
     def __init__(self, path: Path):
