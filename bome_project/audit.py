@@ -70,8 +70,16 @@ def scan(lines):
             continue
         if l.startswith("Incoming"):
             writes |= set(re.findall(r'var="(%s)" Type="SetVar"' % VAR, l))
+            # An incoming Perform or Timer RECEIVES its parameters into variables --
+            # <Params>qq</Params> is a write, not a read. Missing this reported every
+            # parameter variable as "read but never written", the same false positive
+            # class as the one that had `oo` filed under UNDOCUMENTED.
+            for params in re.findall(r"<Params>([^<]*)</Params>", l):
+                writes |= set(re.findall(r"\b(%s)\b" % VAR, params))
         elif l.startswith("Outgoing"):
             reads |= set(re.findall(r'var="(%s)"' % VAR, l))
+            for params in re.findall(r"<Params>([^<]*)</Params>", l):
+                reads |= set(re.findall(r"\b(%s)\b" % VAR, params))
         else:
             p = payload(l)
             writes |= set(re.findall(r"(%s)=(?!=)" % VAR, p))
