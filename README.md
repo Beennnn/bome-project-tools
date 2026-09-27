@@ -138,18 +138,52 @@ python3 plans/rig-zones.py          # drive real MIDI, print a verdict
 
 Writing always takes a timestamped backup first, and refuses to run while Bome is open.
 
+## Auditing variables
+
+Bome gives you two-character variable names and almost no guard rails: `ma`, `pp`, `sg`
+carry no scope, no type and no owner, and **only ten names are actually local** —
+everything else is global, including the ones that look local.
+
+```console
+$ python3 -m bome_project.audit MyProject.bmtp
+
+== scope ==
+  UNDOCUMENTED  cu
+  global        g0 g1 g2
+  local         pp
+== de-facto globals: read in a preset that never writes them ==
+  Preset.0    ACTIVE New Preset                   reads cu
+== early exits that fire the outgoing action ==
+  Preset.0    ACTIVE Options2   'if(pp!=40)execute' fires before g0/g1 is assigned
+```
+
+The convention it checks is in [`docs/variable-convention.md`](docs/variable-convention.md),
+with a [worked example](docs/variable-convention-example.md).
+
+> **Ten locals, not nine.** `oo` is one, and an earlier version of this convention both
+> omitted it and cited it as an example of a name that only *looks* local. Corrected on
+> 2026-09-27 after Steve Caldwell of Bome Customer Care pointed it out — which also means
+> the audit was reporting a genuine local as `UNDOCUMENTED`, the one false positive it
+> must not have. He also noted that locals can now be passed between translators through
+> Perform and Timers, which is what makes the parameter in the pattern above work.
+
 ## Layout
 
 ```
-bome_project/project.py   read/write a .bmtp — the nine rules live here
+bome_project/project.py   read/write a .bmtp — the nine format rules live here
 bome_project/probe.py     send MIDI, listen, compare; assert silence too
+bome_project/audit.py     variable scope, collisions, silent-failure patterns
 plans/rig-zones.py        one rig's test plan, as a worked example
+docs/variable-convention.md   eight naming rules the audit checks
 ```
+
+This absorbed **bome-variable-naming**, which had grown a second parser for the same
+format — the exact duplication this toolkit exists to remove.
 
 ## Not done yet
 
-- The audit pass (duplicate translators, conflicting triggers, dead globals) exists as
-  throwaway scripts, not as a tool.
+- `audit.py` still carries its own parser rather than reading through `project.Project`.
+  It works, but it is the duplication named above, one merge later than it should be.
 - Nothing reads or writes the MIDI Router section of the settings file.
 - One rig, one Bome version (1.9.2), macOS only. Everything here is verified, but
   verified once.
