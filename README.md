@@ -2,10 +2,10 @@
 
 # bome-project-tools
 
-**Read, audit and safely rewrite Bome MIDI Translator Pro project files.** The `.bmtp`
-format is not documented anywhere; this repository is what we learned by editing a real
-88-translator project, with every rule verified against Bome 1.9.2 by reopening the
-file Bome produced.
+**Read, audit and safely rewrite Bome MIDI Translator Pro project files.** What follows
+is what we worked out about the `.bmtp` format while editing a real 88-translator
+project, with every rule verified against Bome 1.9.2 by reopening the file Bome
+produced. It is observation rather than documentation — corrections welcome.
 
 > **Status: private, work in progress.** It does one real job today — it replaced 21
 > translators with 3 in a live rig, verified 9 cases out of 9 against hardware — but the
@@ -26,9 +26,10 @@ translators — it is twenty-one. Add a fourth destination and it is twenty-eigh
 Two tools follow from that: one that edits the file without breaking it, and one that
 proves the result on real MIDI.
 
-## The format, in nine rules
+## What we worked out about the format
 
-Each one cost at least one mistake.
+Nine rules, each of which cost us a mistake first. Offered in case they save someone
+else the same afternoon.
 
 ```
 ; ------- Bome MIDI Translator: signed project file
@@ -47,9 +48,9 @@ PresetSwitchIgnore=0
 
 1. **A translator is spread over four indexed keys** — `Name`, `Incoming`, `Outgoing`,
    `Options` — never grouped. Touching one means recollecting all four.
-2. **Lines are sorted alphabetically** by key name, then numerically by index. Writing
-   them in any other order yields a file Bome accepts but rewrites wholesale on the
-   first save, making every future diff unreadable.
+2. **Lines come out sorted alphabetically** by key name, then numerically by index.
+   Writing them in another order is harmless — Bome normalises on the next save — but
+   the normalising rewrite makes that save's diff unreadable, so it is worth matching.
 3. **Numbering must be contiguous.** Deleting translator 11 of 39 means renumbering the
    27 that follow, across all four keys.
 4. **`Outgoing<N>=None`** — the literal string — is a translator that emits nothing. It
