@@ -24,10 +24,14 @@ SEVEN RULES, each paid for at least once:
 1.  A TRANSLATOR IS SPREAD OVER FOUR INDEXED KEYS -- Name, Incoming, Outgoing,
     Options -- never grouped. Touching one means recollecting all four.
 
-2.  LINES ARE SORTED ALPHABETICALLY by key name, then numerically by index:
-    Active, Comments, Incoming0..N, Name, Name0..N, Options0..N, Outgoing0..N,
-    PresetSwitchIgnore. Any other order yields a file Bome accepts but rewrites
-    wholesale on the first save, making every future diff unreadable.
+2.  LINES ARE SORTED LEXICOGRAPHICALLY BY KEY -- as TEXT, not by index number:
+    Active, Comments, Incoming0, Incoming1, Incoming10, … Incoming19, Incoming2,
+    Incoming20, Incoming3 … then Name, Name0, Name1, Name10 … same pattern, then
+    Options*, Outgoing*, PresetSwitchIgnore. `Name` comes before `Name0` because a
+    prefix sorts before any longer string.
+    This module sorted by (prefix, int(index)) until 2026-09-27 -- which reads better
+    to a human and is NOT what Bome does. Any other order yields a file Bome accepts
+    but rewrites wholesale on the first save, making every future diff unreadable.
 
 3.  NUMBERING MUST BE CONTIGUOUS. Deleting translator 11 of 39 means renumbering the
     27 that follow, across all four keys at once.
@@ -138,7 +142,11 @@ class Translator:
 
     def set_rules(self, rules: list[str], prefix: str = "Actv01Stop00OutO00") -> None:
         """Rewrites Options with the right COUNT -- the classic rule-6 mistake."""
-        self.options = prefix + ("StMa%08x%s" % (len(rules), "".join(rules))
+        # %08X and not %08x: Bome writes the count in UPPER case, and rule 6 above says
+        # so -- yet this writer emitted lower case. Invisible below ten rules, where the
+        # count has no letters at all; it bites exactly on the dense translators worth
+        # editing. Found on 2026-09-27 writing a twelve-rule translator (0000000C).
+        self.options = prefix + ("StMa%08X%s" % (len(rules), "".join(rules))
                                  if rules else "")
 
 
@@ -179,8 +187,20 @@ class Preset:
                     lines.append(f"{field}{i}={val}")
 
         def rank(l: str):
-            m = re.match(r"^([A-Za-z]+)(\d*)=", l)
-            return (m.group(1), int(m.group(2)) if m.group(2) else -1)
+            """The KEY, compared as text. Bome sorts lexicographically, not numerically.
+
+            Measured on a real 21-translator preset on 2026-09-27:
+
+                Name0 Name1 Name10 Name11 … Name19 Name2 Name20 Name3 … Name9
+
+            An earlier version of this module sorted by (prefix, int(index)) -- which
+            reads better to a human and is NOT what Bome does. The file still loads, so
+            the mistake is invisible until you diff: renumbering moves twenty untouched
+            lines and buries the three you actually added. Comparing the key as TEXT
+            reproduces Bome's order exactly, `Name` before `Name0` included, because a
+            prefix sorts before any longer string.
+            """
+            return l.split("=", 1)[0]
         return f"[Preset.{self.number}]\n" + "\n".join(sorted(lines, key=rank))
 
 
@@ -218,10 +238,24 @@ class Project:
         if not m:
             raise LookupError(f"[Preset.{preset}] not found")
         end = self.text.find("\n[Preset.", m.end())
-        backup = self.path.with_name(
-            self.path.name + time.strftime(".bak-%Y%m%d-%H%M%S"))
+        # The backup name carries the PRESET, and an existing file is never overwritten.
+        # A name with second resolution alone collides as soon as two presets are written
+        # in the same second -- and each copy2 then overwrote the previous backup, so what
+        # survived was a HALF-EDITED file wearing the name of the pre-edit state. That
+        # defeats the one thing a backup is for. Observed on 2026-09-27 writing three
+        # presets in one run.
+        base = self.path.name + time.strftime(".bak-%Y%m%d-%H%M%S") + f"-p{preset}"
+        backup, n = self.path.with_name(base), 1
+        while backup.exists():
+            backup, n = self.path.with_name(f"{base}.{n}"), n + 1
         shutil.copy2(self.path, backup)
-        fresh = self.text[:m.start()] + self.presets[preset].render() + \
+        # Bome separates presets with a BLANK line, and `end` points at the newline that
+        # begins the next header -- so a naive join eats that blank line and leaves three
+        # cosmetic differences in a file that is otherwise byte-identical. Put back
+        # exactly the separator that was there, no more: the point of this writer is that
+        # a diff shows the translators you added and nothing else.
+        separateur = "\n" if end > 0 and self.text[end - 1] == "\n" else ""
+        fresh = self.text[:m.start()] + self.presets[preset].render() + separateur + \
             (self.text[end:] if end > 0 else "\n")
         self.path.write_text(fresh, encoding="utf-8", errors="surrogateescape")
         self.text = fresh
