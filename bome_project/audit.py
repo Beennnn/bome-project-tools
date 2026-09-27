@@ -15,6 +15,9 @@ The convention this audit checks is in `docs/variable-convention.md`.
 """
 import re
 import sys
+from pathlib import Path
+
+from .project import Project
 
 # TEN locals, not nine. `oo` was missing here until 2026-09-27, when Steve Caldwell of
 # Bome Customer Care pointed it out on the forum -- so the audit was reporting a genuine
@@ -30,23 +33,27 @@ OPS = "=(<>+-*/"
 
 
 def parse(path):
-    """-> {preset_id: {'active':bool, 'name':str, 'lines':[...]}} in file order."""
-    presets, cur = {}, None
-    for line in open(path, encoding="utf-8", errors="replace"):
-        line = line.rstrip("\n")
-        m = re.match(r"\[([A-Za-z0-9.]+)\]", line)
-        if m:
-            cur = m.group(1)
-            presets[cur] = {"active": False, "name": cur, "lines": []}
-            continue
-        if cur is None:
-            continue
-        presets[cur]["lines"].append(line)
-        if line.startswith("Active="):
-            presets[cur]["active"] = line.split("=", 1)[1].strip() == "1"
-        elif line.startswith("Name="):
-            presets[cur]["name"] = line.split("=", 1)[1]
-    return {k: v for k, v in presets.items() if k.startswith("Preset.")}
+    """-> {preset_id: {'active':bool, 'name':str, 'lines':[...]}} in file order.
+
+    Reads through `project.Project` rather than scanning the file again. The audit
+    arrived here carrying its own parser for the same format, which was the one
+    duplication this toolkit exists to remove -- the shape below is kept because the
+    reporting code speaks in flat lines, not because the parsing is separate.
+    """
+    proj = Project(Path(path))
+    out = {}
+    for num in sorted(proj.presets):
+        pr = proj.presets[num]
+        lines = [f"{k}={v}" for k, v in pr.header.items()]
+        for i in sorted(pr.translators):
+            tr = pr.translators[i]
+            for field, val in (("Name", tr.name), ("Incoming", tr.incoming),
+                               ("Outgoing", tr.outgoing), ("Options", tr.options)):
+                if val:
+                    lines.append(f"{field}{i}={val}")
+        out[f"Preset.{num}"] = {"active": pr.active, "name": pr.name or f"Preset.{num}",
+                                "lines": lines}
+    return out
 
 
 def payload(options_line):

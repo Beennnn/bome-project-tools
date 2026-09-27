@@ -177,13 +177,13 @@ plans/rig-zones.py        one rig's test plan, as a worked example
 docs/variable-convention.md   eight naming rules the audit checks
 ```
 
-This absorbed **bome-variable-naming**, which had grown a second parser for the same
-format — the exact duplication this toolkit exists to remove.
+This absorbed **bome-variable-naming** entirely: its audit, its convention and its
+worked example live here, and the audit now reads through `project.Project` instead of
+the second parser it arrived with — verified by diffing the full report before and after,
+which came out identical. That repository is archived and points here.
 
 ## Not done yet
 
-- `audit.py` still carries its own parser rather than reading through `project.Project`.
-  It works, but it is the duplication named above, one merge later than it should be.
 - Nothing reads or writes the MIDI Router section of the settings file.
 - One rig, one Bome version (1.9.2), macOS only. Everything here is verified, but
   verified once.
