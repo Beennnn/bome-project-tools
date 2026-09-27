@@ -1,30 +1,34 @@
 #!/usr/bin/env python3
-"""Plan de test du rig a zones : ce qui se verifie sans toucher au clavier.
+"""Test plan for a zoned keyboard rig: what can be checked without touching the keys.
 
-CE QUE CE PLAN COUVRE, et pourquoi c'est borne. Un translator ne se teste qu'en
-envoyant son entrant et en regardant ce qui sort -- il faut donc pouvoir ECRIRE sur
-le port qu'il ecoute. Cinq presets ecoutent un port materiel, et rien ne permet d'y
-injecter un message depuis un script :
+WHAT THIS COVERS, and why it is bounded. A translator can only be tested by sending its
+incoming action and watching what comes out — which means being able to WRITE to the port
+it listens on. Five presets of this rig listen to hardware, and no script can inject into
+those:
 
-    preset                          port ecoute               testable
-    Touche CC & Bend  (inactif)     TOUCHE Main Port          non
-    Breath Control                  Breath Controller 5.2     non
-    Roli Keyb Notes   (inactif)     Seaboard RISE 49          non
-    Degraded mode                   P-Series + Rig Bus        partiellement
-    Clavier                         P-Series                  non
-    Zones notes                     P-Series                  non  <- le coeur du rig
-    Zones etat                      Rig Bus                   OUI
-    Zones controleurs               Rig Bus                   OUI
-    Ableton to Stage Traxx          Rig Bus                   OUI
-    Clock beat                      tous                      OUI
+    preset                          listens to                testable
+    Touche CC & Bend  (inactive)    TOUCHE Main Port          no
+    Breath Control                  Breath Controller 5.2     no
+    Roli Keyb Notes   (inactive)    Seaboard RISE 49          no
+    Degraded mode                   P-Series + Rig Bus        partly
+    Clavier                         P-Series                  no
+    Zones notes                     P-Series                  no   <- the heart of the rig
+    Zones etat                      Rig Bus                   YES
+    Zones controleurs               Rig Bus                   YES
+    Ableton to Stage Traxx          Rig Bus                   YES
+    Clock beat                      any                       YES
 
-« Zones notes » est le plus important et le moins testable : c'est lui qui envoie une
-note dans la bonne zone selon sa hauteur. Il exige de jouer sur le P-Series, donc une
-main humaine -- la section B du plan, a derouler avec l'observateur.
+`Zones notes` is the most important and the least reachable: it is what sends a note to
+the right zone according to its pitch. It needs a hand on the keyboard — the manual
+section printed at the end of a run.
 
-LE PIEGE A NE PLUS REJOUER. Le canal est 0-BASED dans le fichier de configuration :
-`<Channel num="11"/>` est le canal 12. Un plan de test qui retape des numeros se
-desynchronise de la configuration ; celui-ci les LIT, par sonde_declencheur.
+THE TRAP NOT TO REPEAT. The channel is 0-BASED in the configuration file:
+`<Channel num="11"/>` is channel 12. A plan that retypes numbers drifts away from the
+configuration; this one READS them, through find_trigger.
+
+BOME MUST BE RUNNING for any of this to mean anything — it is Bome that translates. An
+entire run of "nothing" with Bome closed would be indistinguishable from a broken config,
+which is why the run refuses to start without it.
 """
 
 from __future__ import annotations
@@ -34,93 +38,105 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import mido                                                   # noqa: E402
-from bome_project.probe import Cas, declencheurs, deroule, sonde_declencheur  # noqa: E402
+import mido                                                        # noqa: E402
+from bome_project.probe import Case, find_trigger, run, triggers   # noqa: E402
+from bome_project.project import bome_running                      # noqa: E402
 
 CONFIG = Path.home() / "dev/music/rig-private/bome/Ben_config.bmtp"
 PORT = "Rig Bus"
-ZONES_ETAT, ZONES_CTRL = 6, 8
+ZONES_STATE, ZONES_CTRL = 6, 8
 
-# Quelles zones chaque declencheur doit couper. C'est le CONTRAT, ecrit ici en clair
-# parce qu'un test qui deduit l'attendu de la configuration ne teste plus rien.
-PANIC = {112: {1}, 113: {1},           # bornes propres a une zone
+# Which zones each trigger must silence. This is the CONTRACT, written out in full,
+# because a test that derives its expectation from the configuration tests nothing.
+PANIC = {112: {1}, 113: {1},           # split points belonging to one zone
          116: {2}, 122: {2},
          120: {3}, 121: {3},
-         114: {1, 2},                  # bornes PARTAGEES : elles separent deux zones,
-         115: {2, 3},                  #   donc deplacer l'une orpheline des notes des deux cotes
-         102: {1, 2, 3}}               # tone global : transpose tout, coupe tout
+         114: {1, 2},                  # SHARED split points: they separate two zones,
+         115: {2, 3},                  #   so moving one orphans held notes on both sides
+         102: {1, 2, 3}}               # global tone: transposes everything, cuts everything
+
+ALL_NOTES_OFF = lambda m: m.type == "control_change" and m.control == 123   # noqa: E731
 
 
-def cas_panic(decls) -> list[Cas]:
-    """A · le panic : une borne bouge, les zones concernees se taisent."""
+def panic_cases(trigs: list) -> list[Case]:
+    """A · panic: a split point moves, the zones concerned go quiet."""
     out = []
     for cc, zones in PANIC.items():
-        d = sonde_declencheur(decls, ZONES_ETAT, cc)
-        out.append(Cas(
-            titre=f"CC{cc} ch{d.canal} → panic {sorted(zones)}",
-            envoi=mido.Message("control_change", channel=d.canal - 1, control=cc, value=60),
-            attendu={(z, 123) for z in zones},
-            filtre=lambda m: m.type == "control_change" and m.control == 123))
+        t = find_trigger(trigs, ZONES_STATE, cc)
+        out.append(Case(
+            title=f"CC{cc} ch{t.channel} -> panic {sorted(zones)}",
+            send=mido.Message("control_change", channel=t.channel - 1, control=cc, value=60),
+            expected={(z, 123) for z in zones},
+            keep=ALL_NOTES_OFF))
     return out
 
 
-def cas_controleurs(decls) -> list[Cas]:
-    """B · les controleurs : un CC du clavier maitre part vers les trois zones.
+def controller_cases(trigs: list) -> list[Case]:
+    """B · controllers: one CC from the master keyboard reaches all three zones.
 
-    Le fan-out n'est PAS factorise par un Perform, et c'est correct : ici les trois
-    destinations recoivent toujours, sans condition. Un Perform n'y gagnerait rien --
-    il n'economise que les croisements d'un produit, et il n'y a pas de produit.
+    This fan-out is NOT factored through a Perform, and that is correct: here the three
+    destinations always receive, unconditionally. A Perform would save nothing — it only
+    collapses the crossings of a product, and there is no product.
     """
-    d = sonde_declencheur(decls, ZONES_CTRL, 1)               # CC1 modulation
-    return [Cas(
-        titre=f"CC1 ch{d.canal} modulation → 3 zones",
-        envoi=mido.Message("control_change", channel=d.canal - 1, control=1, value=64),
-        attendu={(1, 1), (2, 1), (3, 1)},
-        filtre=lambda m: m.type == "control_change" and m.control == 1)]
+    t = find_trigger(trigs, ZONES_CTRL, 1)                         # CC1 modulation
+    return [Case(
+        title=f"CC1 ch{t.channel} modulation -> 3 zones",
+        send=mido.Message("control_change", channel=t.channel - 1, control=1, value=64),
+        expected={(1, 1), (2, 1), (3, 1)},
+        keep=lambda m: m.type == "control_change" and m.control == 1)]
 
 
-def cas_garde(decls) -> list[Cas]:
-    """C · les gardes : ce qui NE doit rien produire.
+def guard_cases(trigs: list) -> list[Case]:
+    """C · guards: what must produce NOTHING.
 
-    Sans ces cas, un plan qui rate sa cible rend « rien » partout et se lit comme un
-    succes. C'est exactement ce qui est arrive le 2026-09-27 avec un mauvais canal.
+    Without these, a plan that misses its target returns "nothing" everywhere and reads
+    like a pass. That is exactly what happened on 2026-09-27 with a wrong channel, and
+    it is the reason `expect_silence` has to be declared rather than inferred.
     """
-    d = sonde_declencheur(decls, ZONES_ETAT, 112)
+    t = find_trigger(trigs, ZONES_STATE, 112)
     return [
-        Cas(titre=f"CC112 sur le MAUVAIS canal {d.canal - 1} → silence",
-            envoi=mido.Message("control_change", channel=d.canal - 2, control=112, value=60),
-            attendu_vide=True,
-            filtre=lambda m: m.type == "control_change" and m.control == 123),
-        Cas(titre="CC 99 inconnu → silence",
-            envoi=mido.Message("control_change", channel=d.canal - 1, control=99, value=60),
-            attendu_vide=True,
-            filtre=lambda m: m.type == "control_change" and m.control == 123),
-        Cas(titre="NoteOn E3 → silence, le preset de test est parti",
-            envoi=mido.Message("note_on", channel=0, note=0x40, velocity=100),
-            attendu_vide=True,
-            filtre=lambda m: m.type == "control_change" and m.control == 123),
+        Case(title=f"CC112 on the WRONG channel {t.channel - 1} -> silence",
+             send=mido.Message("control_change", channel=t.channel - 2, control=112, value=60),
+             expect_silence=True, keep=ALL_NOTES_OFF),
+        Case(title="CC 99, unmapped -> silence",
+             send=mido.Message("control_change", channel=t.channel - 1, control=99, value=60),
+             expect_silence=True, keep=ALL_NOTES_OFF),
+        Case(title="NoteOn E3 -> silence, the test preset is gone",
+             send=mido.Message("note_on", channel=0, note=0x40, velocity=100),
+             expect_silence=True, keep=ALL_NOTES_OFF),
     ]
 
 
+MANUAL = """
+NOT COVERED, because a script cannot write to a hardware port — walk these by hand:
+  1. Zones notes · play a note in each keyboard zone, check it leaves on channel 1,
+     then 2, then 3 according to pitch.
+  2. Breath Control · breath, bite, nod and tilt on the TEControl.
+  3. Clavier · the CCs of the P-Series.
+  4. Degraded mode · unplug Ableton and check the keyboard still sounds.
+  5. Repli brut · tick its Active box, play, check the piano sounds UNTRANSPOSED,
+     then untick it — left on, the piano doubles Ableton.
+"""
+
+
 def main() -> int:
-    decls = declencheurs(CONFIG)
-    print(f"{CONFIG.name} · {len(decls)} entrants MIDI dans les presets actifs\n")
+    if not bome_running():
+        print("Bome MIDI Translator is not running: nothing would translate, and a run\n"
+              "of pure silence cannot be told apart from a broken configuration.",
+              file=sys.stderr)
+        return 2
+    trigs = triggers(CONFIG)
+    print(f"{CONFIG.name} · {len(trigs)} MIDI incoming actions in active presets\n")
     total = 0
-    for titre, cas in (("A · PANIC", cas_panic(decls)),
-                       ("B · CONTROLEURS", cas_controleurs(decls)),
-                       ("C · GARDES — le silence attendu", cas_garde(decls))):
-        print(f"╔═ {titre} " + "═" * (60 - len(titre)))
-        total += deroule(PORT, cas)
+    for title, cases in (("A · PANIC", panic_cases(trigs)),
+                         ("B · CONTROLLERS", controller_cases(trigs)),
+                         ("C · GUARDS — expected silence", guard_cases(trigs))):
+        print(f"╔═ {title} " + "═" * max(0, 60 - len(title)))
+        total += run(PORT, cases)
         print()
     print("=" * 82)
-    print("VERDICT :", "tout conforme" if not total else f"{total} ecart(s) a examiner")
-    print("""
-NON COUVERT, faute de pouvoir ecrire sur un port materiel — a derouler a la main :
-  1. Zones notes · jouer une note dans chaque zone du clavier, verifier qu'elle
-     sort sur le canal 1, 2 puis 3 selon la hauteur.
-  2. Breath Control · souffle, morsure, hochement, inclinaison au TEControl.
-  3. Clavier · les CC du P-Series.
-  4. Degraded mode · debrancher Ableton et verifier que le clavier sonne encore.""")
+    print("VERDICT:", "all conforming" if not total else f"{total} mismatch(es) to inspect")
+    print(MANUAL)
     return total
 
 

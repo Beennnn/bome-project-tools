@@ -1,20 +1,19 @@
-"""Eprouver une configuration Bome contre du MIDI reel.
+"""Exercise a Bome configuration against real MIDI.
 
-POURQUOI CET OUTIL EXISTE. Une configuration Bome est une machine a etats muette :
-rien ne dit si un translator a tire, et un translator qui ne matche pas ne se plaint
-pas -- il ne fait rien, silencieusement, pour tout le concert. Le seul verdict est
-d'envoyer un message et de regarder ce qui sort.
+WHY THIS EXISTS. A Bome configuration is a mute state machine: nothing says whether a
+translator fired, and one that does not match never complains -- it simply does nothing,
+silently, for the whole show. The only verdict is to send a message and watch what comes
+out.
 
-LA LECON QUI A MOTIVE L'ECRITURE, payee le 2026-09-27 : un test ecrit a la main a
-rendu 0 sur 6 et fait croire a une regression. La configuration etait juste ; le test
-visait le canal 11 alors que les declencheurs ecoutent le 12. Deux gardes en
-decoulent, et ce sont les seules qui comptent vraiment :
+THE LESSON THAT PROMPTED IT, paid on 2026-09-27: a hand-written test returned 0 of 6 and
+looked like a regression. The configuration was fine; the test aimed at channel 11 while
+the triggers listen on 12. Two guards follow, and they are the ones that matter:
 
-  - `attendu_vide` force a declarer qu'on attend le silence, pour qu'un test muet
-    parce qu'il rate sa cible ne puisse plus passer pour un test reussi ;
-  - `sonde_declencheur` lit le canal et le numero DANS le fichier de configuration
-    au lieu de les retaper. Un plan de test ne repete jamais ce que la config dit
-    deja -- c'est ainsi qu'il se desynchronise.
+  - `expect_silence` forces you to DECLARE that you expect nothing, so a test that is
+    mute because it missed its target can no longer read as a pass;
+  - `find_trigger` reads the channel and number FROM the configuration file instead of
+    retyping them. A test plan never repeats what the config already states -- that is
+    exactly how it drifts out of sync.
 """
 
 from __future__ import annotations
@@ -31,137 +30,135 @@ except ImportError:                                    # pragma: no cover
     mido = None
 
 
-# ── lire les declencheurs depuis la configuration ───────────────────────────────
+# ── reading triggers out of the configuration ───────────────────────────────────
 
 @dataclass
-class Declencheur:
-    """Ce qu'un translator ECOUTE, tel que le fichier le declare."""
+class Trigger:
+    """What a translator LISTENS for, as the file declares it."""
     preset: int
     index: int
-    nom: str
+    name: str
     port: str
-    type: str          # ControlChange, NoteOn, ProgramChange…
-    canal: int | None  # 1-16, ou None pour « n'importe quel canal »
-    numero: int | None # numero de CC ou de note, None si la valeur est variable
+    kind: str          # ControlChange, NoteOn, ProgramChange…
+    channel: int | None  # 1-16, or None for "any channel"
+    number: int | None   # CC or note number, None when the value is a variable
 
 
-_TYPE_MIDO = {"ControlChange": "control_change", "NoteOn": "note_on",
-              "NoteOff": "note_off", "ProgramChange": "program_change",
-              "PitchBend": "pitchwheel", "ChannelPressure": "aftertouch"}
+def triggers(path: Path) -> list[Trigger]:
+    """Every MIDI incoming action of a project, channel and number included.
 
+    The channel is 0-BASED in the file -- `num="11"` is channel 12. That is the trap
+    which cost a false diagnosis, and the reason a test plan should read here rather
+    than retype numbers by hand.
 
-def declencheurs(chemin: Path) -> list[Declencheur]:
-    """Tous les entrants MIDI d'un projet, canal et numero compris.
-
-    Le canal est 0-BASED dans le fichier -- `num="11"` est le canal 12. C'est le
-    piege qui a coute un faux diagnostic, et la raison pour laquelle un plan de test
-    doit lire ici plutot que de retaper des numeros a la main.
+    Inactive presets are skipped: their translators do not fire, so asserting on them
+    would be asserting on nothing.
     """
-    texte = chemin.read_text(encoding="utf-8", errors="replace")
-    out: list[Declencheur] = []
-    for m in re.finditer(r"^\[Preset\.(\d+)\]$", texte, re.M):
-        deb = m.end()
-        fin = texte.find("\n[Preset.", deb)
-        corps = texte[deb:fin if fin > 0 else len(texte)]
-        if (a := re.search(r"^Active=(\d)", corps, re.M)) and a.group(1) != "1":
-            continue                                   # un preset inactif ne tire pas
-        noms = dict(re.findall(r"^Name(\d+)=(.*)$", corps, re.M))
-        for mi in re.finditer(r"^Incoming(\d+)=MID3(.*)$", corps, re.M):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    out: list[Trigger] = []
+    for m in re.finditer(r"^\[Preset\.(\d+)\]$", text, re.M):
+        start = m.end()
+        end = text.find("\n[Preset.", start)
+        body = text[start:end if end > 0 else len(text)]
+        if (a := re.search(r"^Active=(\d)", body, re.M)) and a.group(1) != "1":
+            continue
+        names = dict(re.findall(r"^Name(\d+)=(.*)$", body, re.M))
+        for mi in re.finditer(r"^Incoming(\d+)=MID3(.*)$", body, re.M):
             i, xml = mi.group(1), mi.group(2)
             port = (p.group(1) if (p := re.search(r"<Port>([^<]+)</Port>", xml)) else "")
-            typ = (t.group(1) if (t := re.search(r'Simple Type="(\w+)"', xml)) else "")
+            kind = (k.group(1) if (k := re.search(r'Simple Type="(\w+)"', xml)) else "")
             ch = re.search(r'<Channel num="(\d+)"(\s+Type="Any")?', xml)
             num = re.search(r'<Value1 num="(0x[0-9A-Fa-f]+|\d+)"', xml)
-            out.append(Declencheur(
-                preset=int(m.group(1)), index=int(i), nom=noms.get(i, ""),
-                port=port, type=typ,
-                canal=None if (ch and ch.group(2)) else (int(ch.group(1)) + 1 if ch else None),
-                numero=(int(num.group(1), 16) if num and num.group(1).startswith("0x")
+            out.append(Trigger(
+                preset=int(m.group(1)), index=int(i), name=names.get(i, ""),
+                port=port, kind=kind,
+                channel=None if (ch and ch.group(2)) else (int(ch.group(1)) + 1 if ch else None),
+                number=(int(num.group(1), 16) if num and num.group(1).startswith("0x")
                         else int(num.group(1)) if num else None)))
     return out
 
 
-def sonde_declencheur(decls: list[Declencheur], preset: int, numero: int):
-    """Le declencheur d'un preset pour un numero donne -- canal lu dans la config."""
-    for d in decls:
-        if d.preset == preset and d.numero == numero:
-            return d
-    raise LookupError(f"aucun declencheur de numero {numero} dans le preset {preset}")
+def find_trigger(all_triggers: list[Trigger], preset: int, number: int) -> Trigger:
+    """The trigger of a preset for a given number -- channel read from the config."""
+    for t in all_triggers:
+        if t.preset == preset and t.number == number:
+            return t
+    raise LookupError(f"no trigger with number {number} in preset {preset}")
 
 
-# ── envoyer, ecouter, comparer ──────────────────────────────────────────────────
+# ── send, listen, compare ───────────────────────────────────────────────────────
 
 @dataclass
-class Cas:
-    """Un cas de test : ce qu'on envoie, ce qu'on attend en retour.
+class Case:
+    """One test case: what goes in, what is expected back.
 
-    `attendu` est un ensemble de (canal, numero) observes en sortie. `attendu_vide`
-    doit etre mis a True pour attendre le silence : sans lui, un cas qui n'observe
-    rien est considere comme RATE, parce que c'est presque toujours la cible qu'on a
-    manquee plutot que le silence qu'on voulait.
+    `expected` is a set of (channel, number) observed on the way out.
+    `expect_silence` must be set to assert that nothing comes back: without it, a case
+    that observes nothing counts as a FAILURE, because that is almost always a missed
+    target rather than the silence you meant.
     """
-    titre: str
-    envoi: object                       # un mido.Message
-    attendu: set = field(default_factory=set)
-    attendu_vide: bool = False
-    filtre: object = None               # quels messages retenir en sortie
-    attente_s: float = 0.5
+    title: str
+    send: object                        # a mido.Message
+    expected: set = field(default_factory=set)
+    expect_silence: bool = False
+    keep: object = None                 # which outgoing messages to retain
+    wait_s: float = 0.5
 
 
-class Sonde:
-    """Ouvre un port en lecture et en ecriture, et joue des cas."""
+class Probe:
+    """Opens one port for reading and writing, and plays cases through it."""
 
     def __init__(self, port: str):
         if mido is None:
-            raise SystemExit("il manque mido : pip install mido python-rtmidi")
+            raise SystemExit("mido is missing: pip install mido python-rtmidi")
         self.port = port
-        self._vu: list = []
+        self._seen: list = []
         self._stop = threading.Event()
 
     def __enter__(self):
         self._out = mido.open_output(self.port)
-        self._t = threading.Thread(target=self._ecoute, daemon=True)
-        self._t.start()
-        time.sleep(0.4)                 # laisser le port s'etablir avant le 1er envoi
+        self._thread = threading.Thread(target=self._listen, daemon=True)
+        self._thread.start()
+        time.sleep(0.4)                 # let the port settle before the first send
         return self
 
     def __exit__(self, *_):
         self._stop.set()
         self._out.close()
 
-    def _ecoute(self):
+    def _listen(self):
         with mido.open_input(self.port) as inp:
             while not self._stop.is_set():
                 for m in inp.iter_pending():
-                    self._vu.append(m)
+                    self._seen.append(m)
                 time.sleep(0.01)
 
-    def joue(self, cas: Cas) -> tuple[bool, set]:
-        self._vu.clear()
-        self._out.send(cas.envoi)
-        time.sleep(cas.attente_s)
-        garde = cas.filtre or (lambda m: m.type == "control_change")
-        obs = {(m.channel + 1, getattr(m, "control", getattr(m, "note", None)))
-               for m in list(self._vu) if garde(m)}
-        # Le message qu'on vient d'envoyer nous revient : un port virtuel boucle.
-        obs.discard((cas.envoi.channel + 1,
-                     getattr(cas.envoi, "control", getattr(cas.envoi, "note", None))))
-        return (not obs if cas.attendu_vide else obs == cas.attendu), obs
+    def play(self, case: Case) -> tuple[bool, set]:
+        self._seen.clear()
+        self._out.send(case.send)
+        time.sleep(case.wait_s)
+        keep = case.keep or (lambda m: m.type == "control_change")
+        seen = {(m.channel + 1, getattr(m, "control", getattr(m, "note", None)))
+                for m in list(self._seen) if keep(m)}
+        # The message we just sent comes back to us: a virtual port loops.
+        seen.discard((case.send.channel + 1,
+                      getattr(case.send, "control", getattr(case.send, "note", None))))
+        return (not seen if case.expect_silence else seen == case.expected), seen
 
 
-def deroule(port: str, cas: list[Cas]) -> int:
-    """Joue tous les cas, imprime un tableau, rend le nombre d'echecs."""
-    print("%-38s %-16s %-16s %s" % ("cas", "attendu", "observe", ""))
+def run(port: str, cases: list[Case]) -> int:
+    """Play every case, print a table, return the number of failures."""
+    print("%-38s %-16s %-16s %s" % ("case", "expected", "observed", ""))
     print("-" * 82)
-    echecs = 0
-    with Sonde(port) as s:
-        for c in cas:
-            ok, obs = s.joue(c)
-            echecs += not ok
-            att = "silence" if c.attendu_vide else str(sorted(c.attendu))
-            print("%-38s %-16s %-16s %s" % (c.titre[:38], att[:16],
-                                            (str(sorted(obs)) or "rien")[:16],
-                                            "OK" if ok else "!! ECART"))
+    failures = 0
+    with Probe(port) as probe:
+        for case in cases:
+            ok, seen = probe.play(case)
+            failures += not ok
+            want = "silence" if case.expect_silence else str(sorted(case.expected))
+            print("%-38s %-16s %-16s %s" % (case.title[:38], want[:16],
+                                            (str(sorted(seen)) or "nothing")[:16],
+                                            "OK" if ok else "!! MISMATCH"))
     print("-" * 82)
-    print("%d cas · %d ecart(s)" % (len(cas), echecs))
-    return echecs
+    print("%d case(s) · %d mismatch(es)" % (len(cases), failures))
+    return failures

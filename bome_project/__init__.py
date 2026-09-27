@@ -1,1 +1,1 @@
-"""Outils pour les fichiers projet Bome MIDI Translator Pro."""
+"""Tools for Bome MIDI Translator Pro project files."""
