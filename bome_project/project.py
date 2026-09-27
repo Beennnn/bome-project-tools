@@ -42,7 +42,7 @@ SEVEN RULES, each paid for at least once:
 
 6.  `Options` IS A FIXED-LENGTH RECORD followed by rules:
     `Actv01` active · `Stop00` does not stop processing · `OutO00` outgoing options ·
-    `StMa` + EIGHT hex digits giving the NUMBER of rules, then the rules concatenated
+    `StMa` + EIGHT hex digits, UPPER case, giving the NUMBER of rules, then the rules concatenated
     with no separator. Get that count wrong and the extra rules are silently ignored.
 
 7.  THE XML PREFIX NAMES THE ACTION TYPE: `MID3` for MIDI, `Prfm` for a Perform. It
@@ -127,8 +127,13 @@ class Translator:
         return int(v, 16) if v.startswith("0x") else int(v)
 
     def rules(self) -> list[str]:
-        """The declared rules, as written. See rule 6."""
-        m = re.search(r"StMa([0-9a-f]{8})(.*)$", self.options)
+        """The declared rules, as written. See rule 6.
+
+        The count is hexadecimal and Bome writes it in UPPER case: `StMa0000000C` is
+        twelve rules. Matching only [0-9a-f] silently misses every translator with ten
+        or more -- which is exactly the dense ones worth auditing.
+        """
+        m = re.search(r"StMa([0-9A-Fa-f]{8})(.*)$", self.options)
         return [] if not m else [m.group(2)]      # not split: there is no separator
 
     def set_rules(self, rules: list[str], prefix: str = "Actv01Stop00OutO00") -> None:

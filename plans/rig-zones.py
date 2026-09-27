@@ -48,7 +48,7 @@ from bome_project.project import bome_running                      # noqa: E402
 # PANIC contract are specific to one rig.
 CONFIG = Path(os.environ.get("BMTP", Path.home() / "MyProject.bmtp")).expanduser()
 PORT = "Rig Bus"
-ZONES_STATE, ZONES_CTRL = 6, 8
+ZONES_STATE, ZONES_CTRL, FALLBACK = 6, 8, 4
 
 # Which zones each trigger must silence. This is the CONTRACT, written out in full,
 # because a test that derives its expectation from the configuration tests nothing.
@@ -113,13 +113,43 @@ def guard_cases(trigs: list) -> list[Case]:
     ]
 
 
+def fallback_cases(trigs: list) -> list[Case]:
+    """D · the fallback arms and reports its state.
+
+    Only its ARMING is reachable from a script: the notes it forwards come from the
+    keyboard, on a hardware port. But arming is the part that matters at the moment it
+    is needed, and the echo tells us whether the rig believes it is armed.
+
+    The value is asserted, not just the address: `keep` filters on it, so a case only
+    passes when the echo carries the state it should. An echo on the right CC with the
+    wrong value would otherwise read as a pass.
+
+    The second case disarms, which also leaves the rig as it was found -- a test that
+    changes state and does not put it back is a trap for whoever plays next.
+    """
+    t = find_trigger(trigs, FALLBACK, 119)
+    ch = t.channel - 1
+    return [
+        Case(title=f"CC119=127 ch{t.channel} -> fallback ARMED, echo 127",
+             send=mido.Message("control_change", channel=ch, control=119, value=127),
+             expected={(t.channel, 118)},
+             keep=lambda m: m.type == "control_change" and m.control == 118 and m.value == 127),
+        Case(title=f"CC119=0 ch{t.channel} -> disarmed, echo 0",
+             send=mido.Message("control_change", channel=ch, control=119, value=0),
+             expected={(t.channel, 118)},
+             keep=lambda m: m.type == "control_change" and m.control == 118 and m.value == 0),
+    ]
+
+
 MANUAL = """
 NOT COVERED, because a script cannot write to a hardware port — walk these by hand:
   1. Zones notes · play a note in each keyboard zone, check it leaves on channel 1,
      then 2, then 3 according to pitch.
   2. Breath Control · breath, bite, nod and tilt on the TEControl.
   3. Clavier · the CCs of the P-Series.
-  4. Degraded mode · unplug Ableton and check the keyboard still sounds.
+  4. Degraded mode · unplug Ableton, arm it, and check the keyboard sounds IN THE
+     KEY OF THE SONG — its transposition read a variable nobody ever wrote until
+     2026-09-27, so it played untransposed for as long as it existed.
   5. Repli brut · tick its Active box, play, check the piano sounds UNTRANSPOSED,
      then untick it — left on, the piano doubles Ableton.
 """
@@ -136,7 +166,8 @@ def main() -> int:
     total = 0
     for title, build in (("A · PANIC", panic_cases),
                          ("B · CONTROLLERS", controller_cases),
-                         ("C · GUARDS — expected silence", guard_cases)):
+                         ("C · GUARDS — expected silence", guard_cases),
+                         ("D · FALLBACK arming", fallback_cases)):
         print(f"╔═ {title} " + "═" * max(0, 60 - len(title)))
         try:
             cases = build(trigs)

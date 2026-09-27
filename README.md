@@ -61,7 +61,7 @@ PresetSwitchIgnore=0
    false regression diagnosis.
 6. **`Options` is a fixed-length record followed by rules**: `Actv01` active ·
    `Stop00` does not stop processing · `OutO00` outgoing options · `StMa` + **eight hex
-   digits giving the NUMBER of rules**, then the rules concatenated with no separator.
+   digits, UPPER case, giving the NUMBER of rules**, then the rules concatenated with no separator.
    Get the count wrong and the extra rules are silently ignored.
 7. **The XML prefix names the action type**: `MID3` for MIDI, `Prfm` for a Perform. It
    is not decorative — Bome uses it to pick its parser.
