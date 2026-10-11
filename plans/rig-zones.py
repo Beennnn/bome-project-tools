@@ -76,7 +76,7 @@ def panic_cases(trigs: list) -> list[Case]:
         out.append(
             Case(
                 title=f"CC{cc} ch{t.channel} -> panic {sorted(zones)}",
-                send=mido.Message("control_change", channel=t.channel - 1, control=cc, value=60),
+                send=mido.Message("control_change", channel=t.mido_channel, control=cc, value=60),
                 expected={(z, 123) for z in zones},
                 keep=ALL_NOTES_OFF,
             )
@@ -97,7 +97,7 @@ def controller_cases(trigs: list) -> list[Case]:
     return [
         Case(
             title=f"CC1 ch{t.channel} modulation -> 3 zones",
-            send=mido.Message("control_change", channel=t.channel - 1, control=1, value=64),
+            send=mido.Message("control_change", channel=t.mido_channel, control=1, value=64),
             expected={(1, 1), (2, 1), (3, 1)},
             keep=lambda m: m.type == "control_change" and m.control == 1,
         )
@@ -114,14 +114,14 @@ def guard_cases(trigs: list) -> list[Case]:
     t = find_trigger(trigs, ZONES_STATE, 112)
     return [
         Case(
-            title=f"CC112 on the WRONG channel {t.channel - 1} -> silence",
-            send=mido.Message("control_change", channel=t.channel - 2, control=112, value=60),
+            title=f"CC112 on the WRONG channel {t.mido_channel} -> silence",
+            send=mido.Message("control_change", channel=t.mido_channel - 1, control=112, value=60),
             expect_silence=True,
             keep=ALL_NOTES_OFF,
         ),
         Case(
             title="CC 99, unmapped -> silence",
-            send=mido.Message("control_change", channel=t.channel - 1, control=99, value=60),
+            send=mido.Message("control_change", channel=t.mido_channel, control=99, value=60),
             expect_silence=True,
             keep=ALL_NOTES_OFF,
         ),
@@ -149,7 +149,7 @@ def fallback_cases(trigs: list) -> list[Case]:
     changes state and does not put it back is a trap for whoever plays next.
     """
     t = find_trigger(trigs, FALLBACK, 119)
-    ch = t.channel - 1
+    ch = t.mido_channel
     return [
         Case(
             title=f"CC119=127 ch{t.channel} -> fallback ARMED, echo 127",

@@ -184,6 +184,9 @@ class Scan(unittest.TestCase):
 
 
 class Report(unittest.TestCase):
+    presets: dict[str, dict]
+    out: str
+
     """End to end: write the fixture to disk and read what `main` prints."""
 
     @classmethod

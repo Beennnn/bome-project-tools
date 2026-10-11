@@ -114,6 +114,7 @@ class Parsing(TempProject):
 class Render(TempProject):
     def block(self, num):
         m = re.search(r"^\[Preset\.%d\]\n.*?(?=\n\n|\Z)" % num, FIXTURE, re.M | re.S)
+        assert m is not None, num
         return m.group(0)
 
     def test_an_unchanged_preset_renders_byte_identical(self):

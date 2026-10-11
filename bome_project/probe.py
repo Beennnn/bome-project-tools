@@ -23,6 +23,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Callable
 
 from .project import section_end
 
@@ -46,6 +47,21 @@ class Trigger:
     kind: str  # ControlChange, NoteOn, ProgramChange…
     channel: int | None  # 1-16, or None for "any channel"
     number: int | None  # CC or note number, None when the value is a variable
+
+    @property
+    def mido_channel(self) -> int:
+        """The channel as mido counts it, 0-15, to aim a message at this trigger.
+
+        Raises when the trigger listens on ANY channel: there is no single channel to
+        aim at then, and the `t.channel - 1` this replaces failed as a TypeError on
+        None, far from the cause. Found by mypy on 2026-10-11.
+        """
+        if self.channel is None:
+            raise ValueError(
+                f"preset {self.preset} translator {self.index} ({self.name!r}) listens on "
+                "any channel: pick the channel to send on explicitly"
+            )
+        return self.channel - 1
 
 
 def triggers(path: Path) -> list[Trigger]:
@@ -130,10 +146,10 @@ class Case:
     """
 
     title: str
-    send: object  # a mido.Message
+    send: Any  # a mido.Message -- Any because mido is optional and untyped
     expected: set = field(default_factory=set)
     expect_silence: bool = False
-    keep: object = None  # which outgoing messages to retain
+    keep: Callable[[Any], bool] | None = None  # which outgoing messages to retain
     wait_s: float = 0.5
 
 

@@ -122,7 +122,9 @@ def main(path):
     active = {k: v for k, v in presets.items() if v["active"]}
     print("%s — %d presets, %d active\n" % (path, len(presets), len(active)))
 
-    allvars, writers, readers = set(), {}, {}
+    allvars: set[str] = set()
+    writers: dict[str, set[str]] = {}  # variable -> presets that write it
+    readers: dict[str, set[str]] = {}
     for pid, p in presets.items():
         w, r = scan(p["lines"])
         allvars |= w | r

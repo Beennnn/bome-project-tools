@@ -57,6 +57,8 @@ Name0=no Active key
 
 
 class Triggers(unittest.TestCase):
+    all: list[probe.Trigger]
+
     @classmethod
     def setUpClass(cls):
         with tempfile.TemporaryDirectory() as d:
@@ -78,6 +80,11 @@ class Triggers(unittest.TestCase):
 
     def test_number_hex_decimal_or_variable(self):
         self.assertEqual([t.number for t in self.all], [20, 0x3C, None, 5])
+
+    def test_mido_channel_is_zero_based_and_refuses_any_channel(self):
+        self.assertEqual(self.all[0].mido_channel, 11)  # channel 12
+        with self.assertRaisesRegex(ValueError, "listens on any channel"):
+            _ = self.all[1].mido_channel
 
     def test_name_port_and_kind(self):
         t = self.all[1]
