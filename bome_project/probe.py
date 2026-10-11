@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from .project import section_end
+from .project import is_variable, mid2, section_end
 
 try:
     import mido
@@ -83,8 +83,13 @@ def triggers(path: Path) -> list[Trigger]:
         if (a := re.search(r"^Active=(\d)", body, re.M)) and a.group(1) != "1":
             continue
         names = dict(re.findall(r"^Name(\d+)=(.*)$", body, re.M))
-        for mi in re.finditer(r"^Incoming(\d+)=MID3(.*)$", body, re.M):
-            i, xml = mi.group(1), mi.group(2)
+        for mi in re.finditer(r"^Incoming(\d+)=(MID[23].*)$", body, re.M):
+            i, action = mi.group(1), mi.group(2)
+            raw = mid2(action)
+            if raw:
+                out.append(raw_trigger(int(m.group(1)), int(i), names.get(i, ""), *raw))
+                continue
+            xml = action[4:]
             port = p.group(1) if (p := re.search(r"<Port>([^<]+)</Port>", xml)) else ""
             kind = k.group(1) if (k := re.search(r'Simple Type="(\w+)"', xml)) else ""
             ch = re.search(r'<Channel num="(\d+)"(\s+Type="Any")?', xml)
@@ -109,6 +114,35 @@ def triggers(path: Path) -> list[Trigger]:
                 )
             )
     return out
+
+
+# The status byte's high nibble, named as MID3 names its Simple Type.
+STATUS = {
+    "8": "NoteOff",
+    "9": "NoteOn",
+    "A": "PolyPressure",
+    "B": "ControlChange",
+    "C": "ProgramChange",
+    "D": "ChannelPressure",
+    "E": "PitchBend",
+}
+
+
+def raw_trigger(preset: int, index: int, name: str, ports: list[str], data: list[str]):
+    """A Trigger out of a MID2 pattern. What it listens for is only known when the status
+    byte is a literal: `B3 07 pp` is a ControlChange, channel 4, number 7. A variable
+    status (`pp qq rr`, "any message") gives kind "Raw" and no channel or number."""
+    status = data[0] if data else "pp"
+    if is_variable(status):
+        kind, channel, number = "Raw", None, None
+    elif status == "F0":
+        kind, channel, number = "SysEx", None, None
+    else:
+        kind = STATUS.get(status[0], "Raw")
+        channel = int(status[1], 16) + 1
+        second = data[1] if len(data) > 1 else "pp"
+        number = None if is_variable(second) else int(second, 16)
+    return Trigger(preset, index, name, ports[0] if ports else "", kind, channel, number)
 
 
 def find_trigger(all_triggers: list[Trigger], preset: int, number: int) -> Trigger:

@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-from .project import Project, decode_ports
+from .project import Project, decode_ports, is_variable, mid2
 
 # TEN locals, not nine. `oo` was missing here until 2026-09-27, when Steve Caldwell of
 # Bome Customer Care pointed it out on the forum -- so the audit was reporting a genuine
@@ -88,7 +88,14 @@ def scan(lines):
     for line in lines:
         if not re.match(r"(Options|Incoming|Outgoing)\d+=", line):
             continue
-        if line.startswith("Incoming"):
+        raw = mid2(line.split("=", 1)[1]) if not line.startswith("Options") else None
+        if raw:  # MID2: an incoming pattern captures its variables, an outgoing one sends them
+            found = {b for b in raw[1] if is_variable(b)}
+            if line.startswith("Incoming"):
+                writes |= found
+            else:
+                reads |= found
+        elif line.startswith("Incoming"):
             writes |= set(re.findall(r'var="(%s)" Type="SetVar"' % VAR, line))
             # An incoming Perform or Timer RECEIVES its parameters into variables --
             # <Params>qq</Params> is a write, not a read. Missing this reported every

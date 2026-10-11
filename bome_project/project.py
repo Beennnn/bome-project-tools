@@ -52,7 +52,8 @@ SEVEN RULES, each paid for at least once:
 7.  THE XML PREFIX NAMES THE ACTION TYPE: `MID3` for MIDI, `Prfm` for a Perform. It
     is not decorative -- Bome uses it to pick its parser. `MID2` is an older MIDI
     form, still written for raw-pattern actions: no XML, a MIDA port list right after
-    the prefix (`MID2MIDA00010007Abletonppqqrr`), then the pattern.
+    the prefix (`MID2MIDA00010007Abletonppqqrr`), then the pattern -- one byte per two
+    characters, either upper-case hex (`F0`) or a variable (`pp`). See `mid2`.
 
 AND THE MIDI ROUTER, which lives in the PROJECT, not in the settings (.bmts) file:
 
@@ -164,8 +165,9 @@ class Translator:
         Two encodings: `MID3` names them in <Port> elements, the older `MID2` (still
         written by 1.9.2 for raw-pattern actions) as a MIDA list right after the prefix.
         """
-        if self.incoming.startswith("MID2MIDA"):
-            return read_ports(self.incoming, 4)[0]
+        parsed = mid2(self.incoming)
+        if parsed:
+            return parsed[0]
         return re.findall(r"<Port>([^<]*)</Port>", self.incoming)
 
     def rules(self) -> list[str]:
@@ -277,6 +279,32 @@ def read_ports(text: str, start: int = 0) -> tuple[list[str], int]:
         names.append(text[pos + 4 : pos + 4 + size])
         pos += 4 + size
     return names, pos
+
+
+def mid2(action: str) -> tuple[list[str], list[str]] | None:
+    """(ports, bytes) of a `MID2` action, or None for any other kind.
+
+        MID2 MIDA00010007Ableton F0 41 10 00 00 77 12 01 00 00 pp qq rr F7
+
+    Each byte is two characters: upper-case hex is a literal, a lower-case name is a
+    variable -- WRITTEN by an incoming action (it captures that byte), READ by an
+    outgoing one. Both shapes seen on real projects (2026-10-11); anything else
+    raises, so that a new shape is noticed instead of misread. One ambiguity cannot be
+    resolved: lower-case hex (`f0`) is also a valid variable name. Bome writes hex in
+    upper case, so a lower-case pair is read as a variable.
+    """
+    if not action.startswith("MID2"):
+        return None
+    ports, pos = read_ports(action, 4) if action.startswith("MIDA", 4) else ([], 4)
+    pattern = action[pos:]
+    if not re.fullmatch(r"(?:[0-9A-F]{2}|[a-z][a-z0-9])*", pattern):
+        raise ValueError(f"unexpected MID2 pattern {pattern[:40]!r}")
+    return ports, [pattern[i : i + 2] for i in range(0, len(pattern), 2)]
+
+
+def is_variable(byte: str) -> bool:
+    """A MID2 byte that names a variable rather than a hex literal."""
+    return byte[0].islower()
 
 
 @dataclass(frozen=True)

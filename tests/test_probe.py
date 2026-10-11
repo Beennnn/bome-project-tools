@@ -47,6 +47,11 @@ Name0=inactive
 [Preset.2]
 Incoming0=%s
 Name0=no Active key
+
+[Preset.3]
+Incoming0=MID2MIDA00010004KeysB307pp
+Incoming1=MID2ppqqrr
+Incoming2=MID2F04110ppF7
 """ % (
     incoming("ControlChange", '<Channel num="11"/>', '<Value1 num="20"/>'),
     incoming("NoteOn", '<Channel num="0" Type="Any"/>', '<Value1 num="0x3C"/>', port="Pads"),
@@ -68,8 +73,11 @@ class Triggers(unittest.TestCase):
 
     def test_reads_only_midi_incoming_of_active_presets(self):
         # Preset.1 is inactive; the Perform incoming is not MIDI; a preset without an
-        # Active key counts as active (Bome's default).
-        self.assertEqual([(t.preset, t.index) for t in self.all], [(0, 0), (0, 1), (0, 2), (2, 0)])
+        # Active key counts as active (Bome's default). MID2 incoming counts as MIDI.
+        self.assertEqual(
+            [(t.preset, t.index) for t in self.all],
+            [(0, 0), (0, 1), (0, 2), (2, 0), (3, 0), (3, 1), (3, 2)],
+        )
 
     def test_the_channel_is_zero_based_in_the_file(self):
         self.assertEqual(self.all[0].channel, 12)  # num="11" is channel 12
@@ -79,7 +87,17 @@ class Triggers(unittest.TestCase):
         self.assertIsNone(self.all[1].channel)
 
     def test_number_hex_decimal_or_variable(self):
-        self.assertEqual([t.number for t in self.all], [20, 0x3C, None, 5])
+        self.assertEqual([t.number for t in self.all], [20, 0x3C, None, 5, 7, None, None])
+
+    def test_a_mid2_trigger_with_a_literal_status_byte(self):
+        t = self.all[4]  # B3 07 pp: ControlChange, channel 4, CC 7
+        self.assertEqual((t.port, t.kind, t.channel, t.number), ("Keys", "ControlChange", 4, 7))
+        self.assertIs(probe.find_trigger(self.all, 3, 7), t)
+
+    def test_a_mid2_trigger_on_any_message_or_on_sysex(self):
+        raw, sysex = self.all[5], self.all[6]
+        self.assertEqual((raw.kind, raw.channel, raw.number), ("Raw", None, None))
+        self.assertEqual((sysex.kind, sysex.channel, sysex.number), ("SysEx", None, None))
 
     def test_mido_channel_is_zero_based_and_refuses_any_channel(self):
         self.assertEqual(self.all[0].mido_channel, 11)  # channel 12

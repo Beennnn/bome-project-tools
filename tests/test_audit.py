@@ -179,6 +179,14 @@ class Scan(unittest.TestCase):
         w, r = self.scan("Outgoing0=" + PERFORM_OUT.format(p="pp"))
         self.assertEqual((w, r), (set(), {"ga", "pp"}))
 
+    def test_a_mid2_incoming_pattern_writes_its_variables(self):
+        w, r = self.scan("Incoming0=MID2MIDA00010004Keysppqqrr")
+        self.assertEqual((w, r), ({"pp", "qq", "rr"}, set()))
+
+    def test_a_mid2_outgoing_pattern_reads_them_and_hex_bytes_are_not_variables(self):
+        w, r = self.scan("Outgoing0=MID2F04110ppF7")
+        self.assertEqual((w, r), (set(), {"pp"}))
+
     def test_name_and_header_lines_are_ignored(self):
         self.assertEqual(self.scan("Name0=pp=rr", "Comments=ka=1"), (set(), set()))
 

@@ -16,7 +16,15 @@ from pathlib import Path
 from unittest import mock
 
 from bome_project import project
-from bome_project.project import Preset, Project, Route, Translator, decode_ports, read_ports
+from bome_project.project import (
+    Preset,
+    Project,
+    Route,
+    Translator,
+    decode_ports,
+    mid2,
+    read_ports,
+)
 
 IN = (
     'MID3<Incoming Action="MIDI"><Ports><Port>Keys</Port></Ports>'
@@ -259,6 +267,25 @@ class PortLists(unittest.TestCase):
     def test_read_ports_says_where_the_list_stops(self):
         names, end = read_ports("MID2MIDA00010007Abletonppqqrr", 4)
         self.assertEqual((names, "MID2MIDA00010007Abletonppqqrr"[end:]), (["Ableton"], "ppqqrr"))
+
+
+class Mid2(unittest.TestCase):
+    """The two MID2 shapes seen on real projects, and the refusal of any other."""
+
+    def test_a_raw_pattern_with_a_port_list(self):
+        self.assertEqual(mid2("MID2MIDA00010007Abletonppqqrr"), (["Ableton"], ["pp", "qq", "rr"]))
+
+    def test_hex_literals_and_variables_mix_byte_by_byte(self):
+        self.assertEqual(mid2("MID2F0411000ppF7"), ([], ["F0", "41", "10", "00", "pp", "F7"]))
+
+    def test_other_actions_are_not_mid2(self):
+        self.assertIsNone(mid2(OUT))
+        self.assertIsNone(mid2("None"))
+
+    def test_an_unknown_pattern_raises(self):
+        for bad in ("MID2F", "MID2ABC", "MID2<xml/>"):
+            with self.assertRaisesRegex(ValueError, "unexpected MID2 pattern"):
+                mid2(bad)
 
 
 class InPorts(unittest.TestCase):
