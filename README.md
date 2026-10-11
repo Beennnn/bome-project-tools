@@ -190,7 +190,12 @@ $ python3 -m unittest
 ```
 
 GitHub Actions runs the same command on every push and pull request, on Python 3.9 to
-3.14 (Linux) and on macOS.
+3.14 (Linux) and on macOS, plus a lint with [ruff](https://docs.astral.sh/ruff/) whose
+rules live in [`ruff.toml`](ruff.toml):
+
+```console
+$ uvx ruff@0.17.0 check .
+```
 
 This absorbed **bome-variable-naming** entirely: its audit, its convention and its
 worked example live here, and the audit now reads through `project.Project` instead of

@@ -1,0 +1,13 @@
+# Lint configuration, read by the CI and by any local `ruff check`.
+# It lives in the repo so that a developer's global ruff config cannot make the
+# local verdict differ from the CI's.
+target-version = "py39"   # the oldest Python the test suite is verified on
+line-length = 100
+
+[lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    # %-formatting is the house style of this codebase (report tables, regexes
+    # built with %s). Converting ~30 call sites would be churn with no defect fixed.
+    "UP031",
+]
