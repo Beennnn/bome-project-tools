@@ -24,6 +24,11 @@ from .project import Project
 # local as UNDOCUMENTED, which is the one kind of false positive this tool must not have.
 LOCALS = {"oo", "pp", "qq", "rr", "ss", "tt", "uu", "vv", "ww", "xx"}
 GLOBAL_HEADS = set("ghijklmnyz")
+# Heads o..x are global too, as long as the second character differs from the head:
+# their doubled form (oo..xx) is the local. Also from Steve Caldwell, on the forum
+# (2026-08-23) -- missing until 2026-10-11, so `sg`, `pc`, `oa` were filed under
+# UNDOCUMENTED when the language does document them.
+MIXED_HEADS = set("opqrstuvwx")
 # Reserved Channel Mode messages — a stray controller number here silences a rig.
 CHANNEL_MODE = {120: "All Sound Off", 121: "Reset All Controllers",
                 122: "Local Control", 123: "All Notes Off", 124: "Omni Off",
@@ -92,6 +97,8 @@ def classify(v):
         return "local"
     if v[0] in GLOBAL_HEADS:
         return "global"
+    if v[0] in MIXED_HEADS and v[1] != v[0]:
+        return "global"
     return "UNDOCUMENTED"
 
 
@@ -114,10 +121,11 @@ def main(path):
         names = sorted(v for v in allvars if classify(v) == kind)
         if names:
             print("  %-13s %s" % (kind, " ".join(names)))
-    print("  (UNDOCUMENTED = neither one of the ten locals nor a g/h/i/j/k/l/m/n/y/z global)")
+    print("  (UNDOCUMENTED = neither one of the ten locals nor a global: head g/h/i/j/k/l/m/n/y/z,"
+          " or head o..x with a different second character)")
 
     print("\n== collisions: written by more than one ACTIVE preset ==")
-    print("  (locals are excluded: pp..xx cannot leak between translators)")
+    print("  (locals are excluded: oo..xx cannot leak between translators)")
     hits = 0
     for v in sorted(allvars):
         if v in LOCALS:

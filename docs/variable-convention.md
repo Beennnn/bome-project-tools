@@ -23,13 +23,14 @@ Two families, and they are *not* symmetric:
 | Family | Names | Lifetime |
 |---|---|---|
 | **Local** | `oo` `pp` `qq` `rr` `ss` `tt` `uu` `vv` `ww` `xx` — **only these ten** | one execution of one translator, per incoming event |
-| **Global** | second character appended to heads `g h i j k l m n y z` (e.g. `ga`–`gz`, `g0`–`g9`, `ma`–`mz`, …) | as long as MIDI Translator runs; 0 at project start |
+| **Global** | any second character after heads `g h i j k l m n y z` (e.g. `ga`–`gz`, `g0`–`g9`, `ma`–`mz`, …) — **and** after heads `o`–`x` as long as it differs from the head (`oa`, `o1`, `pc`, `sg`, …: the doubled `oo`…`xx` are the locals) | as long as MIDI Translator runs; 0 at project start |
 
 Two consequences most projects get wrong:
 
 1. **Locals are only the ten doubled names.** `pc`, `sg`, `tp`, `v1` look local —
-   they are not in the local list. Their scope is undocumented, and in practice they
-   behave like globals. Every one of them is a latent collision.
+   they are globals (a head from `o` to `x`, followed by anything but itself). Every
+   other translator that uses the same name shares the box: each of them is a latent
+   collision.
 2. **Locals are local *per incoming event*.** Two simultaneous messages hitting the same
    translator run it twice with separate copies. That is exactly the isolation you want
    for scratch arithmetic, and you get it for free.
@@ -40,7 +41,7 @@ than the manual — verify against your own version before relying on them.
 
 ## Rule 0 — you never *choose* whether a name is local or global
 
-This is not a convention, it is the language: **`pp qq rr ss tt uu vv ww xx` are local.
+This is not a convention, it is the language: **`oo pp qq rr ss tt uu vv ww xx` are local.
 Every other name is global.** There is no prefix to invent and no ambiguity to resolve —
 reading `pp` tells you it dies with the translator, reading `hn` tells you it does not.
 The convention below only decides *which* you should reach for, and how to organise the
@@ -50,7 +51,7 @@ globals.
 
 If a value is born and dies inside one translator's rule chain, use a local. Two
 translators both using `pp` can never interfere, so you only ever need to disambiguate
-*within* a single translator. Nine slots is plenty for that — the point is to always use
+*within* a single translator. Ten slots is plenty for that — the point is to always use
 them the same way:
 
 | local | job |
@@ -61,6 +62,7 @@ them the same way:
 | `ss` `tt` `uu` | scratch: intermediate arithmetic, never emitted |
 | `vv` `ww` | values to emit when they are neither `rr` nor `pp` |
 | `xx` | flag / spare |
+| `oo` | second spare — the tenth local, which an earlier version of this table forgot |
 
 So *"I need two controller values in one translator"* → `pp` for the first and `vv` for
 the second; a third goes in `ww`. If one of them is a controller **number** rather than a
@@ -119,9 +121,11 @@ will misread in six months.
 
 ## Rule 3 — a global is owned by exactly one domain
 
-Give each *device or concern* its own head letter, and never share it. You get exactly ten
-heads — `g h i j k l m n y z` — so pick the mnemonic ones first and treat the rest as
-spares you assign and write down:
+Give each *device or concern* its own head letter, and never share it. Ten heads —
+`g h i j k l m n y z` — are global whatever follows them, so pick the mnemonic ones first
+and treat the rest as spares you assign and write down. Heads `o`–`x` are global too, but
+each hides a local (its doubled form): keep them out of the device scheme, so that a
+one-character slip can never turn an owned global into a local.
 
 | head | mnemonic | typical owner |
 |---|---|---|

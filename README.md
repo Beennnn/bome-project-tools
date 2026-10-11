@@ -165,7 +165,9 @@ with a [worked example](docs/variable-convention-example.md).
 > 2026-09-27 after Steve Caldwell of Bome Customer Care pointed it out — which also means
 > the audit was reporting a genuine local as `UNDOCUMENTED`, the one false positive it
 > must not have. He also noted that locals can now be passed between translators through
-> Perform and Timers, which is what makes the parameter in the pattern above work.
+> Perform and Timers, which is what makes the parameter in the pattern above work — and
+> that heads `o`–`x` are global too when the second character differs (`oa`, `sg`, `pc`),
+> which the audit only learnt on 2026-10-11: until then it filed them as `UNDOCUMENTED`.
 
 ## Layout
 
