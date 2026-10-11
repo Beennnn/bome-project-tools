@@ -24,6 +24,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .project import section_end
+
 try:
     import mido
 except ImportError:                                    # pragma: no cover
@@ -58,7 +60,7 @@ def triggers(path: Path) -> list[Trigger]:
     out: list[Trigger] = []
     for m in re.finditer(r"^\[Preset\.(\d+)\]$", text, re.M):
         start = m.end()
-        end = text.find("\n[Preset.", start)
+        end = section_end(text, start)
         body = text[start:end if end > 0 else len(text)]
         if (a := re.search(r"^Active=(\d)", body, re.M)) and a.group(1) != "1":
             continue
@@ -156,7 +158,13 @@ class Probe:
         # The message we just sent comes back to us: a virtual port loops.
         seen.discard((case.send.channel + 1,
                       getattr(case.send, "control", getattr(case.send, "note", None))))
-        return (not seen if case.expect_silence else seen == case.expected), seen
+        if case.expect_silence:
+            return not seen, seen
+        # An EMPTY `expected` without `expect_silence` is a case that declared nothing.
+        # Comparing set() == set() made it pass on silence -- exactly the missed-target
+        # case this module exists to catch. Until 2026-10-11 the guard promised by the
+        # docstring of `Case` was not in the code; a test found it.
+        return bool(case.expected) and seen == case.expected, seen
 
 
 def run(port: str, cases: list[Case]) -> int:
@@ -170,7 +178,7 @@ def run(port: str, cases: list[Case]) -> int:
             failures += not ok
             want = "silence" if case.expect_silence else str(sorted(case.expected))
             print("%-38s %-16s %-16s %s" % (case.title[:38], want[:16],
-                                            (str(sorted(seen)) or "nothing")[:16],
+                                            (str(sorted(seen)) if seen else "nothing")[:16],
                                             "OK" if ok else "!! MISMATCH"))
     print("-" * 82)
     print("%d case(s) · %d mismatch(es)" % (len(cases), failures))
