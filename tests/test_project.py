@@ -8,6 +8,7 @@ synthetic -- a real project carries port names and a signature.
 The promise this module makes is "written back byte-identical when unchanged", so most
 tests here are round trips: read, render or write, compare bytes.
 """
+
 import re
 import tempfile
 import unittest
@@ -17,12 +18,16 @@ from unittest import mock
 from bome_project import project
 from bome_project.project import Preset, Project, Translator
 
-IN = ('MID3<Incoming Action="MIDI"><Ports><Port>Keys</Port></Ports>'
-      '<Simple Type="ControlChange"><Channel num="{ch}"/><Value1 num="{n}"/>'
-      '<Value2 var="pp" Type="SetVar"/></Simple></Incoming>')
-OUT = ('MID3<Outgoing Action="MIDI"><Ports><Port>Synth</Port></Ports>'
-       '<Simple Type="ControlChange"><Channel num="0"/><Value1 num="7"/>'
-       '<Value2 var="pp"/></Simple></Outgoing>')
+IN = (
+    'MID3<Incoming Action="MIDI"><Ports><Port>Keys</Port></Ports>'
+    '<Simple Type="ControlChange"><Channel num="{ch}"/><Value1 num="{n}"/>'
+    '<Value2 var="pp" Type="SetVar"/></Simple></Incoming>'
+)
+OUT = (
+    'MID3<Outgoing Action="MIDI"><Ports><Port>Synth</Port></Ports>'
+    '<Simple Type="ControlChange"><Channel num="0"/><Value1 num="7"/>'
+    '<Value2 var="pp"/></Simple></Outgoing>'
+)
 
 
 def bome_sorted(lines):
@@ -33,21 +38,29 @@ def bome_sorted(lines):
 def preset_block(num, name, count, active=1):
     lines = [f"Active={active}", f"Name={name}", "PresetSwitchIgnore=0"]
     for i in range(count):
-        lines += [f"Incoming{i}=" + IN.format(ch=i % 16, n=20 + i), f"Name{i}=tr {i}",
-                  f"Options{i}=Actv01Stop00OutO00StMa00000001pp=pp+{i}",
-                  f"Outgoing{i}=" + (OUT if i % 2 == 0 else "None")]
+        lines += [
+            f"Incoming{i}=" + IN.format(ch=i % 16, n=20 + i),
+            f"Name{i}=tr {i}",
+            f"Options{i}=Actv01Stop00OutO00StMa00000001pp=pp+{i}",
+            f"Outgoing{i}=" + (OUT if i % 2 == 0 else "None"),
+        ]
     return f"[Preset.{num}]\n" + "\n".join(bome_sorted(lines))
 
 
 # Eleven translators in preset 1, so that Incoming10 has to sort between 1 and 2.
-FIXTURE = "\n\n".join([
-    "; ------- Bome MIDI Translator: signed project file",
-    preset_block(0, "First", 2),
-    preset_block(1, "Dense", 11),
-    preset_block(2, "Last", 1, active=0),
-    "[Project]\nDefaultInPorts=Keys\nVersion=1",
-    "[Signatures]\nSigName-1=test\nSignature-1=AAAA\nSignedBy-1=test",
-]) + "\n"
+FIXTURE = (
+    "\n\n".join(
+        [
+            "; ------- Bome MIDI Translator: signed project file",
+            preset_block(0, "First", 2),
+            preset_block(1, "Dense", 11),
+            preset_block(2, "Last", 1, active=0),
+            "[Project]\nDefaultInPorts=Keys\nVersion=1",
+            "[Signatures]\nSigName-1=test\nSignature-1=AAAA\nSignedBy-1=test",
+        ]
+    )
+    + "\n"
+)
 
 
 class TempProject(unittest.TestCase):
@@ -133,9 +146,12 @@ class Write(TempProject):
         proj.write(2)
         text = self.path.read_text(encoding="utf-8")
         self.assertIn("Name0=renamed", text)
-        self.assertTrue(text.endswith(
-            "[Project]\nDefaultInPorts=Keys\nVersion=1\n\n"
-            "[Signatures]\nSigName-1=test\nSignature-1=AAAA\nSignedBy-1=test\n"))
+        self.assertTrue(
+            text.endswith(
+                "[Project]\nDefaultInPorts=Keys\nVersion=1\n\n"
+                "[Signatures]\nSigName-1=test\nSignature-1=AAAA\nSignedBy-1=test\n"
+            )
+        )
 
     def test_an_edit_changes_only_its_own_line(self):
         proj = Project(self.path)
@@ -167,8 +183,10 @@ class Write(TempProject):
     def test_refuses_to_write_while_bome_runs(self):
         proj = Project(self.path)
         proj.presets[0].translators[0].name = "edited"
-        with mock.patch.object(project, "bome_running", return_value=True), \
-                self.assertRaises(SystemExit):
+        with (
+            mock.patch.object(project, "bome_running", return_value=True),
+            self.assertRaises(SystemExit),
+        ):
             proj.write(0)
         self.assertEqual(self.path.read_text(encoding="utf-8"), FIXTURE)
         self.assertEqual(self.backups(), [])

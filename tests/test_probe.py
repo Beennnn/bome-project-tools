@@ -5,6 +5,7 @@ Two halves. `triggers` / `find_*` read a project file and need nothing else. `Pr
 the tests need neither the library nor a running MT Pro -- what they check is the
 VERDICT logic, which is where the 2026-09-27 false regression came from.
 """
+
 import contextlib
 import io
 import tempfile
@@ -19,8 +20,10 @@ from bome_project.probe import Case
 
 
 def incoming(kind, channel, value1, port="Keys"):
-    return ('MID3<Incoming Action="MIDI"><Ports><Port>%s</Port></Ports>'
-            '<Simple Type="%s">%s%s</Simple></Incoming>' % (port, kind, channel, value1))
+    return (
+        'MID3<Incoming Action="MIDI"><Ports><Port>%s</Port></Ports>'
+        '<Simple Type="%s">%s%s</Simple></Incoming>' % (port, kind, channel, value1)
+    )
 
 
 FIXTURE = """; ------- Bome MIDI Translator: synthetic test project
@@ -67,7 +70,7 @@ class Triggers(unittest.TestCase):
         self.assertEqual([(t.preset, t.index) for t in self.all], [(0, 0), (0, 1), (0, 2), (2, 0)])
 
     def test_the_channel_is_zero_based_in_the_file(self):
-        self.assertEqual(self.all[0].channel, 12)       # num="11" is channel 12
+        self.assertEqual(self.all[0].channel, 12)  # num="11" is channel 12
         self.assertEqual(self.all[3].channel, 16)
 
     def test_type_any_means_any_channel(self):
@@ -83,7 +86,7 @@ class Triggers(unittest.TestCase):
     def test_find_trigger_by_number(self):
         self.assertEqual(probe.find_trigger(self.all, 0, 20).channel, 12)
         with self.assertRaises(LookupError):
-            probe.find_trigger(self.all, 0, 99)          # only in the inactive preset
+            probe.find_trigger(self.all, 0, 99)  # only in the inactive preset
 
     def test_find_any_by_kind_when_the_number_is_a_variable(self):
         self.assertEqual(probe.find_any(self.all, 0, "ControlChange").index, 0)
@@ -93,6 +96,7 @@ class Triggers(unittest.TestCase):
 
 
 # ── a fake mido: one virtual port that loops back, plus a scripted "Bome" ────────
+
 
 def cc(channel, control, value=64):
     """A mido-like message. `channel` is 0-based, as in mido."""
@@ -125,6 +129,7 @@ class FakeMido:
 
             def close(self):
                 pass
+
         return Out()
 
     def open_input(self, port):
@@ -141,6 +146,7 @@ class FakeMido:
 
             def __exit__(self, *_):
                 pass
+
         return In()
 
 
@@ -152,20 +158,24 @@ class ProbeVerdicts(unittest.TestCase):
             return p.play(case)
 
     def test_the_expected_messages_pass(self):
-        ok, seen = self.play(lambda m: [cc(0, 7), cc(1, 8)],
-                             Case("two out", cc(11, 20), expected={(1, 7), (2, 8)}, wait_s=0.05))
+        ok, seen = self.play(
+            lambda m: [cc(0, 7), cc(1, 8)],
+            Case("two out", cc(11, 20), expected={(1, 7), (2, 8)}, wait_s=0.05),
+        )
         self.assertTrue(ok)
         self.assertEqual(seen, {(1, 7), (2, 8)})
 
     def test_the_message_sent_is_not_mistaken_for_an_answer(self):
-        ok, seen = self.play(lambda m: [],
-                             Case("echo only", cc(11, 20), expect_silence=True, wait_s=0.05))
+        ok, seen = self.play(
+            lambda m: [], Case("echo only", cc(11, 20), expect_silence=True, wait_s=0.05)
+        )
         self.assertTrue(ok)
         self.assertEqual(seen, set())
 
     def test_a_wrong_answer_fails(self):
-        ok, _ = self.play(lambda m: [cc(0, 9)],
-                          Case("wrong cc", cc(11, 20), expected={(1, 7)}, wait_s=0.05))
+        ok, _ = self.play(
+            lambda m: [cc(0, 9)], Case("wrong cc", cc(11, 20), expected={(1, 7)}, wait_s=0.05)
+        )
         self.assertFalse(ok)
 
     def test_silence_fails_unless_it_was_declared(self):
@@ -179,15 +189,23 @@ class ProbeVerdicts(unittest.TestCase):
         self.assertFalse(ok)
 
     def test_declared_silence_fails_when_something_comes_out(self):
-        ok, seen = self.play(lambda m: [cc(0, 7)],
-                             Case("leak", cc(11, 20), expect_silence=True, wait_s=0.05))
+        ok, seen = self.play(
+            lambda m: [cc(0, 7)], Case("leak", cc(11, 20), expect_silence=True, wait_s=0.05)
+        )
         self.assertFalse(ok)
         self.assertEqual(seen, {(1, 7)})
 
     def test_keep_selects_which_messages_count(self):
-        ok, seen = self.play(lambda m: [note(0, 60), cc(0, 7)],
-                             Case("notes only", cc(11, 20), expected={(1, 60)},
-                                  keep=lambda m: m.type == "note_on", wait_s=0.05))
+        ok, seen = self.play(
+            lambda m: [note(0, 60), cc(0, 7)],
+            Case(
+                "notes only",
+                cc(11, 20),
+                expected={(1, 60)},
+                keep=lambda m: m.type == "note_on",
+                wait_s=0.05,
+            ),
+        )
         self.assertTrue(ok)
         self.assertEqual(seen, {(1, 60)})
 
@@ -201,9 +219,12 @@ class RunReport(unittest.TestCase):
     def test_counts_mismatches_and_prints_the_table(self):
         def bome(msg):
             return [cc(0, 7)] if msg.control == 20 else []
-        cases = [Case("answers", cc(11, 20), expected={(1, 7)}, wait_s=0.05),
-                 Case("mute", cc(11, 21), expected={(1, 7)}, wait_s=0.05),
-                 Case("silent on purpose", cc(11, 22), expect_silence=True, wait_s=0.05)]
+
+        cases = [
+            Case("answers", cc(11, 20), expected={(1, 7)}, wait_s=0.05),
+            Case("mute", cc(11, 21), expected={(1, 7)}, wait_s=0.05),
+            Case("silent on purpose", cc(11, 22), expect_silence=True, wait_s=0.05),
+        ]
         out = io.StringIO()
         with mock.patch.object(probe, "mido", FakeMido(bome)), contextlib.redirect_stdout(out):
             failures = probe.run("virtual", cases)

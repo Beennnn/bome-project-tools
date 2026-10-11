@@ -28,22 +28,24 @@ from .project import section_end
 
 try:
     import mido
-except ImportError:                                    # pragma: no cover
+except ImportError:  # pragma: no cover
     mido = None
 
 
 # ── reading triggers out of the configuration ───────────────────────────────────
 
+
 @dataclass
 class Trigger:
     """What a translator LISTENS for, as the file declares it."""
+
     preset: int
     index: int
     name: str
     port: str
-    kind: str          # ControlChange, NoteOn, ProgramChange…
+    kind: str  # ControlChange, NoteOn, ProgramChange…
     channel: int | None  # 1-16, or None for "any channel"
-    number: int | None   # CC or note number, None when the value is a variable
+    number: int | None  # CC or note number, None when the value is a variable
 
 
 def triggers(path: Path) -> list[Trigger]:
@@ -61,22 +63,35 @@ def triggers(path: Path) -> list[Trigger]:
     for m in re.finditer(r"^\[Preset\.(\d+)\]$", text, re.M):
         start = m.end()
         end = section_end(text, start)
-        body = text[start:end if end > 0 else len(text)]
+        body = text[start : end if end > 0 else len(text)]
         if (a := re.search(r"^Active=(\d)", body, re.M)) and a.group(1) != "1":
             continue
         names = dict(re.findall(r"^Name(\d+)=(.*)$", body, re.M))
         for mi in re.finditer(r"^Incoming(\d+)=MID3(.*)$", body, re.M):
             i, xml = mi.group(1), mi.group(2)
-            port = (p.group(1) if (p := re.search(r"<Port>([^<]+)</Port>", xml)) else "")
-            kind = (k.group(1) if (k := re.search(r'Simple Type="(\w+)"', xml)) else "")
+            port = p.group(1) if (p := re.search(r"<Port>([^<]+)</Port>", xml)) else ""
+            kind = k.group(1) if (k := re.search(r'Simple Type="(\w+)"', xml)) else ""
             ch = re.search(r'<Channel num="(\d+)"(\s+Type="Any")?', xml)
             num = re.search(r'<Value1 num="(0x[0-9A-Fa-f]+|\d+)"', xml)
-            out.append(Trigger(
-                preset=int(m.group(1)), index=int(i), name=names.get(i, ""),
-                port=port, kind=kind,
-                channel=None if (ch and ch.group(2)) else (int(ch.group(1)) + 1 if ch else None),
-                number=(int(num.group(1), 16) if num and num.group(1).startswith("0x")
-                        else int(num.group(1)) if num else None)))
+            out.append(
+                Trigger(
+                    preset=int(m.group(1)),
+                    index=int(i),
+                    name=names.get(i, ""),
+                    port=port,
+                    kind=kind,
+                    channel=None
+                    if (ch and ch.group(2))
+                    else (int(ch.group(1)) + 1 if ch else None),
+                    number=(
+                        int(num.group(1), 16)
+                        if num and num.group(1).startswith("0x")
+                        else int(num.group(1))
+                        if num
+                        else None
+                    ),
+                )
+            )
     return out
 
 
@@ -103,6 +118,7 @@ def find_any(all_triggers: list[Trigger], preset: int, kind: str) -> Trigger:
 
 # ── send, listen, compare ───────────────────────────────────────────────────────
 
+
 @dataclass
 class Case:
     """One test case: what goes in, what is expected back.
@@ -112,11 +128,12 @@ class Case:
     that observes nothing counts as a FAILURE, because that is almost always a missed
     target rather than the silence you meant.
     """
+
     title: str
-    send: object                        # a mido.Message
+    send: object  # a mido.Message
     expected: set = field(default_factory=set)
     expect_silence: bool = False
-    keep: object = None                 # which outgoing messages to retain
+    keep: object = None  # which outgoing messages to retain
     wait_s: float = 0.5
 
 
@@ -134,7 +151,7 @@ class Probe:
         self._out = mido.open_output(self.port)
         self._thread = threading.Thread(target=self._listen, daemon=True)
         self._thread.start()
-        time.sleep(0.4)                 # let the port settle before the first send
+        time.sleep(0.4)  # let the port settle before the first send
         return self
 
     def __exit__(self, *_):
@@ -153,11 +170,15 @@ class Probe:
         self._out.send(case.send)
         time.sleep(case.wait_s)
         keep = case.keep or (lambda m: m.type == "control_change")
-        seen = {(m.channel + 1, getattr(m, "control", getattr(m, "note", None)))
-                for m in list(self._seen) if keep(m)}
+        seen = {
+            (m.channel + 1, getattr(m, "control", getattr(m, "note", None)))
+            for m in list(self._seen)
+            if keep(m)
+        }
         # The message we just sent comes back to us: a virtual port loops.
-        seen.discard((case.send.channel + 1,
-                      getattr(case.send, "control", getattr(case.send, "note", None))))
+        seen.discard(
+            (case.send.channel + 1, getattr(case.send, "control", getattr(case.send, "note", None)))
+        )
         if case.expect_silence:
             return not seen, seen
         # An EMPTY `expected` without `expect_silence` is a case that declared nothing.
@@ -177,9 +198,15 @@ def run(port: str, cases: list[Case]) -> int:
             ok, seen = probe.play(case)
             failures += not ok
             want = "silence" if case.expect_silence else str(sorted(case.expected))
-            print("%-38s %-16s %-16s %s" % (case.title[:38], want[:16],
-                                            (str(sorted(seen)) if seen else "nothing")[:16],
-                                            "OK" if ok else "!! MISMATCH"))
+            print(
+                "%-38s %-16s %-16s %s"
+                % (
+                    case.title[:38],
+                    want[:16],
+                    (str(sorted(seen)) if seen else "nothing")[:16],
+                    "OK" if ok else "!! MISMATCH",
+                )
+            )
     print("-" * 82)
     print("%d case(s) · %d mismatch(es)" % (len(cases), failures))
     return failures

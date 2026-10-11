@@ -13,6 +13,7 @@ structure through `project.Project`.
 
 The convention this audit checks is in `docs/variable-convention.md`.
 """
+
 import re
 import sys
 from pathlib import Path
@@ -30,9 +31,16 @@ GLOBAL_HEADS = set("ghijklmnyz")
 # UNDOCUMENTED when the language does document them.
 MIXED_HEADS = set("opqrstuvwx")
 # Reserved Channel Mode messages — a stray controller number here silences a rig.
-CHANNEL_MODE = {120: "All Sound Off", 121: "Reset All Controllers",
-                122: "Local Control", 123: "All Notes Off", 124: "Omni Off",
-                125: "Omni On", 126: "Mono On", 127: "Poly On"}
+CHANNEL_MODE = {
+    120: "All Sound Off",
+    121: "Reset All Controllers",
+    122: "Local Control",
+    123: "All Notes Off",
+    124: "Omni Off",
+    125: "Omni On",
+    126: "Mono On",
+    127: "Poly On",
+}
 VAR = r"[a-z][a-z0-9]"
 OPS = "=(<>+-*/"
 
@@ -52,12 +60,19 @@ def parse(path):
         lines = [f"{k}={v}" for k, v in pr.header.items()]
         for i in sorted(pr.translators):
             tr = pr.translators[i]
-            for field, val in (("Name", tr.name), ("Incoming", tr.incoming),
-                               ("Outgoing", tr.outgoing), ("Options", tr.options)):
+            for field, val in (
+                ("Name", tr.name),
+                ("Incoming", tr.incoming),
+                ("Outgoing", tr.outgoing),
+                ("Options", tr.options),
+            ):
                 if val:
                     lines.append(f"{field}{i}={val}")
-        out[f"Preset.{num}"] = {"active": pr.active, "name": pr.name or f"Preset.{num}",
-                                "lines": lines}
+        out[f"Preset.{num}"] = {
+            "active": pr.active,
+            "name": pr.name or f"Preset.{num}",
+            "lines": lines,
+        }
     return out
 
 
@@ -121,8 +136,10 @@ def main(path):
         names = sorted(v for v in allvars if classify(v) == kind)
         if names:
             print("  %-13s %s" % (kind, " ".join(names)))
-    print("  (UNDOCUMENTED = neither one of the ten locals nor a global:"
-          " head g/h/i/j/k/l/m/n/y/z, or head o..x with a different second character)")
+    print(
+        "  (UNDOCUMENTED = neither one of the ten locals nor a global:"
+        " head g/h/i/j/k/l/m/n/y/z, or head o..x with a different second character)"
+    )
 
     print("\n== collisions: written by more than one ACTIVE preset ==")
     print("  (locals are excluded: oo..xx cannot leak between translators)")
@@ -141,8 +158,10 @@ def main(path):
         w, r = scan(p["lines"])
         ext = sorted(r - w)
         if ext:
-            print("  %-11s %-6s %-28s reads %s"
-                  % (pid, "ACTIVE" if p["active"] else "off", p["name"][:28], " ".join(ext)))
+            print(
+                "  %-11s %-6s %-28s reads %s"
+                % (pid, "ACTIVE" if p["active"] else "off", p["name"][:28], " ".join(ext))
+            )
 
     dead = sorted(v for v in allvars if v in readers and v not in writers)
     if dead:
@@ -155,9 +174,16 @@ def main(path):
                 continue
             m = re.search(r'Type="ControlChange".*?<Value1 var="(%s)"' % VAR, line)
             if m:
-                print("  %-11s %-6s %-12s controller = %s  [%s]"
-                      % (pid, "ACTIVE" if p["active"] else "off", line.split("=")[0],
-                         m.group(1), classify(m.group(1))))
+                print(
+                    "  %-11s %-6s %-12s controller = %s  [%s]"
+                    % (
+                        pid,
+                        "ACTIVE" if p["active"] else "off",
+                        line.split("=")[0],
+                        m.group(1),
+                        classify(m.group(1)),
+                    )
+                )
 
     print("\n== early exits that fire the outgoing action ==")
     for pid, p in sorted(presets.items()):
@@ -166,15 +192,24 @@ def main(path):
                 continue
             body = payload(line)
             for m in re.finditer(r"if\([^)]*\)execute", body):
-                tail = body[m.end():]
+                tail = body[m.end() :]
                 assigned = set(re.findall(r"(%s)=(?!=)" % VAR, tail))
                 if assigned:
-                    print("  %-11s %-6s %-10s '%s' fires before %s is assigned"
-                          % (pid, "ACTIVE" if p["active"] else "off", line.split("=")[0],
-                             m.group(0), "/".join(sorted(assigned))))
-    print("\n  ('noexecute' leaves the rules WITHOUT firing — use it when the branch means"
-          "\n   'nothing to send'. Reserved Channel Mode targets: %s)"
-          % ", ".join("CC%d=%s" % (k, v) for k, v in sorted(CHANNEL_MODE.items())))
+                    print(
+                        "  %-11s %-6s %-10s '%s' fires before %s is assigned"
+                        % (
+                            pid,
+                            "ACTIVE" if p["active"] else "off",
+                            line.split("=")[0],
+                            m.group(0),
+                            "/".join(sorted(assigned)),
+                        )
+                    )
+    print(
+        "\n  ('noexecute' leaves the rules WITHOUT firing — use it when the branch means"
+        "\n   'nothing to send'. Reserved Channel Mode targets: %s)"
+        % ", ".join("CC%d=%s" % (k, v) for k, v in sorted(CHANNEL_MODE.items()))
+    )
 
 
 if __name__ == "__main__":

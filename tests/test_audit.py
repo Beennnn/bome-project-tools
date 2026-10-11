@@ -12,6 +12,7 @@ Each test pins one behaviour that was either a bug once (`oo` filed as UNDOCUMEN
 Perform parameters read as never written, heads o..x unknown) or is the reason the
 audit exists (an early `execute` that fires before its controller number is assigned).
 """
+
 import contextlib
 import io
 import tempfile
@@ -20,13 +21,17 @@ from pathlib import Path
 
 from bome_project import audit
 
-MID_IN = ('MID3<Incoming Action="MIDI"><Ports><Port>Keys</Port></Ports>'
-          '<Simple Type="ControlChange"><Channel var="{ch}" Type="SetVar"/>'
-          '<Value1 var="{v1}" Type="SetVar"/><Value2 var="{v2}" Type="SetVar"/>'
-          '</Simple></Incoming>')
-CC_OUT = ('MID3<Outgoing Action="MIDI"><Ports><Port>Synth</Port></Ports>'
-          '<Simple Type="ControlChange"><Channel num="0"/><Value1 var="{v1}"/>'
-          '<Value2 var="{v2}"/></Simple></Outgoing>')
+MID_IN = (
+    'MID3<Incoming Action="MIDI"><Ports><Port>Keys</Port></Ports>'
+    '<Simple Type="ControlChange"><Channel var="{ch}" Type="SetVar"/>'
+    '<Value1 var="{v1}" Type="SetVar"/><Value2 var="{v2}" Type="SetVar"/>'
+    "</Simple></Incoming>"
+)
+CC_OUT = (
+    'MID3<Outgoing Action="MIDI"><Ports><Port>Synth</Port></Ports>'
+    '<Simple Type="ControlChange"><Channel num="0"/><Value1 var="{v1}"/>'
+    '<Value2 var="{v2}"/></Simple></Outgoing>'
+)
 PERFORM_IN = 'Prfm<Incoming Action="Perform"><Name>zone</Name><Params>qq,pp</Params></Incoming>'
 PERFORM_OUT = 'Prfm<Outgoing Action="Perform"><Name>zone</Name><Params>ga,{p}</Params></Outgoing>'
 
@@ -39,35 +44,70 @@ def options(*rules):
 def preset(num, name, active, translators):
     lines = [f"[Preset.{num}]", f"Active={1 if active else 0}", f"Name={name}"]
     for i, (incoming, outgoing, opts) in enumerate(translators):
-        lines += [f"Incoming{i}={incoming}", f"Name{i}=t{i}",
-                  f"Options{i}={opts}", f"Outgoing{i}={outgoing}"]
+        lines += [
+            f"Incoming{i}={incoming}",
+            f"Name{i}=t{i}",
+            f"Options{i}={opts}",
+            f"Outgoing{i}={outgoing}",
+        ]
     return "\n".join(lines)
 
 
-FIXTURE = "\n\n".join([
-    "; ------- Bome MIDI Translator: synthetic test project",
-    # Preset 0 and 1, both active, both write the global `ka` -> a collision.
-    # Preset 0 also fires `execute` before `rr` is assigned: the silent-rig bug.
-    preset(0, "Keys A", True, [
-        (MID_IN.format(ch="qq", v1="rr", v2="pp"), CC_OUT.format(v1="rr", v2="pp"),
-         options("if(pp==0)execute", "rr=7", "ka=pp")),
-    ]),
-    preset(1, "Keys B", True, [
-        (MID_IN.format(ch="qq", v1="oo", v2="pp"), "None",
-         options("ka=pp", "sg=1", "if(pp<64)noexecute", "zz=cu+1")),
-    ]),
-    # Preset 2 is INACTIVE and also writes `ka`: it must not count as a collision.
-    # It reads `sg` without writing it -> a de-facto global.
-    preset(2, "Spare", False, [
-        (MID_IN.format(ch="qq", v1="rr", v2="pp"), CC_OUT.format(v1="ka", v2="sg"),
-         options("ka=1")),
-    ]),
-    # Preset 3: a Perform receives its parameters (writes) and another sends them (reads).
-    preset(3, "Perform", True, [
-        (PERFORM_IN, "None", options("vv=qq+pp")),
-        (MID_IN.format(ch="qq", v1="rr", v2="pp"), PERFORM_OUT.format(p="pp"), options()),
-    ]),
-])
+FIXTURE = "\n\n".join(
+    [
+        "; ------- Bome MIDI Translator: synthetic test project",
+        # Preset 0 and 1, both active, both write the global `ka` -> a collision.
+        # Preset 0 also fires `execute` before `rr` is assigned: the silent-rig bug.
+        preset(
+            0,
+            "Keys A",
+            True,
+            [
+                (
+                    MID_IN.format(ch="qq", v1="rr", v2="pp"),
+                    CC_OUT.format(v1="rr", v2="pp"),
+                    options("if(pp==0)execute", "rr=7", "ka=pp"),
+                ),
+            ],
+        ),
+        preset(
+            1,
+            "Keys B",
+            True,
+            [
+                (
+                    MID_IN.format(ch="qq", v1="oo", v2="pp"),
+                    "None",
+                    options("ka=pp", "sg=1", "if(pp<64)noexecute", "zz=cu+1"),
+                ),
+            ],
+        ),
+        # Preset 2 is INACTIVE and also writes `ka`: it must not count as a collision.
+        # It reads `sg` without writing it -> a de-facto global.
+        preset(
+            2,
+            "Spare",
+            False,
+            [
+                (
+                    MID_IN.format(ch="qq", v1="rr", v2="pp"),
+                    CC_OUT.format(v1="ka", v2="sg"),
+                    options("ka=1"),
+                ),
+            ],
+        ),
+        # Preset 3: a Perform receives its parameters (writes) and another sends them (reads).
+        preset(
+            3,
+            "Perform",
+            True,
+            [
+                (PERFORM_IN, "None", options("vv=qq+pp")),
+                (MID_IN.format(ch="qq", v1="rr", v2="pp"), PERFORM_OUT.format(p="pp"), options()),
+            ],
+        ),
+    ]
+)
 
 
 class Classify(unittest.TestCase):
@@ -178,7 +218,7 @@ class Report(unittest.TestCase):
         coll = self.section("collisions")
         self.assertIn("ka", coll)
         self.assertIn("Preset.0 «Keys A» · Preset.1 «Keys B»", coll)
-        self.assertNotIn("Preset.2", coll)          # inactive: not a collision
+        self.assertNotIn("Preset.2", coll)  # inactive: not a collision
         self.assertIn("-> 1", coll)
 
     def test_locals_are_never_collisions(self):
@@ -190,7 +230,7 @@ class Report(unittest.TestCase):
         defacto = self.section("de-facto globals")
         self.assertRegex(defacto, r"Preset\.2 +off +Spare +reads sg\n")
         self.assertRegex(defacto, r"Preset\.1 +ACTIVE +Keys B +reads cu\n")
-        self.assertNotIn("Preset.0", defacto)       # reads only what it writes
+        self.assertNotIn("Preset.0", defacto)  # reads only what it writes
 
     def test_a_name_read_but_written_nowhere_is_reported(self):
         # cu in a rule, ga as a Perform parameter: neither is written by anyone.

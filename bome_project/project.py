@@ -74,7 +74,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 FIELDS = ("Name", "Incoming", "Outgoing", "Options")
-EMPTY = "None"                     # how an absent outgoing action is written
+EMPTY = "None"  # how an absent outgoing action is written
 
 
 def section_end(text: str, start: int) -> int:
@@ -102,8 +102,7 @@ def bome_running() -> bool:
     as long as the process lives it holds the project in memory and will rewrite the
     file. Closing the window is not enough, it has to quit.
     """
-    return subprocess.run(["pgrep", "-x", "MIDITranslatorPro"],
-                          capture_output=True).returncode == 0
+    return subprocess.run(["pgrep", "-x", "MIDITranslatorPro"], capture_output=True).returncode == 0
 
 
 def refuse_if_running() -> None:
@@ -112,12 +111,14 @@ def refuse_if_running() -> None:
         raise SystemExit(
             "Bome MIDI Translator is running: it holds the project in memory and "
             "will rewrite the file on its next save.\n"
-            "Closing the WINDOW is not enough -- the application has to quit.")
+            "Closing the WINDOW is not enough -- the application has to quit."
+        )
 
 
 @dataclass
 class Translator:
     """The four keys of one index, recollected."""
+
     name: str = ""
     incoming: str = ""
     outgoing: str = EMPTY
@@ -151,7 +152,7 @@ class Translator:
         or more -- which is exactly the dense ones worth auditing.
         """
         m = re.search(r"StMa([0-9A-Fa-f]{8})(.*)$", self.options)
-        return [] if not m else [m.group(2)]      # not split: there is no separator
+        return [] if not m else [m.group(2)]  # not split: there is no separator
 
     def set_rules(self, rules: list[str], prefix: str = "Actv01Stop00OutO00") -> None:
         """Rewrites Options with the right COUNT -- the classic rule-6 mistake."""
@@ -159,14 +160,13 @@ class Translator:
         # so -- yet this writer emitted lower case. Invisible below ten rules, where the
         # count has no letters at all; it bites exactly on the dense translators worth
         # editing. Found on 2026-09-27 writing a twelve-rule translator (0000000C).
-        self.options = prefix + ("StMa%08X%s" % (len(rules), "".join(rules))
-                                 if rules else "")
+        self.options = prefix + ("StMa%08X%s" % (len(rules), "".join(rules)) if rules else "")
 
 
 @dataclass
 class Preset:
     number: int
-    header: dict[str, str] = field(default_factory=dict)   # Active, Comments, Name…
+    header: dict[str, str] = field(default_factory=dict)  # Active, Comments, Name…
     translators: dict[int, Translator] = field(default_factory=dict)
 
     @property
@@ -181,8 +181,9 @@ class Preset:
         """Removes translators AND renumbers. See rule 3."""
         for i in index:
             self.translators.pop(i, None)
-        self.translators = {n: t for n, t in enumerate(
-            self.translators[i] for i in sorted(self.translators))}
+        self.translators = {
+            n: t for n, t in enumerate(self.translators[i] for i in sorted(self.translators))
+        }
 
     def add(self, t: Translator) -> int:
         i = max(self.translators, default=-1) + 1
@@ -194,8 +195,12 @@ class Preset:
         lines = [f"{k}={v}" for k, v in self.header.items()]
         for i in sorted(self.translators):
             t = self.translators[i]
-            for key, val in (("Name", t.name), ("Incoming", t.incoming),
-                             ("Outgoing", t.outgoing), ("Options", t.options)):
+            for key, val in (
+                ("Name", t.name),
+                ("Incoming", t.incoming),
+                ("Outgoing", t.outgoing),
+                ("Options", t.options),
+            ):
                 if val or key == "Outgoing":
                     lines.append(f"{key}{i}={val}")
 
@@ -214,6 +219,7 @@ class Preset:
             prefix sorts before any longer string.
             """
             return line.split("=", 1)[0]
+
         return f"[Preset.{self.number}]\n" + "\n".join(sorted(lines, key=rank))
 
 
@@ -230,15 +236,22 @@ class Project:
         for m in re.finditer(r"^\[Preset\.(\d+)\]$", self.text, re.M):
             num = int(m.group(1))
             end = section_end(self.text, m.end())
-            body = self.text[m.end():end if end > 0 else len(self.text)]
+            body = self.text[m.end() : end if end > 0 else len(self.text)]
             p = Preset(num)
             for line in body.split("\n"):
                 mt = re.match(r"^(%s)(\d+)=(.*)$" % "|".join(FIELDS), line)
                 if mt:
                     t = p.translators.setdefault(int(mt.group(2)), Translator())
-                    setattr(t, {"Name": "name", "Incoming": "incoming",
-                                "Outgoing": "outgoing", "Options": "options"}[mt.group(1)],
-                            mt.group(3))
+                    setattr(
+                        t,
+                        {
+                            "Name": "name",
+                            "Incoming": "incoming",
+                            "Outgoing": "outgoing",
+                            "Options": "options",
+                        }[mt.group(1)],
+                        mt.group(3),
+                    )
                 elif "=" in line and not line.startswith("["):
                     k, _, v = line.partition("=")
                     p.header[k] = v
@@ -268,8 +281,12 @@ class Project:
         # exactly the separator that was there, no more: the point of this writer is that
         # a diff shows the translators you added and nothing else.
         separateur = "\n" if end > 0 and self.text[end - 1] == "\n" else ""
-        fresh = self.text[:m.start()] + self.presets[preset].render() + separateur + \
-            (self.text[end:] if end > 0 else "\n")
+        fresh = (
+            self.text[: m.start()]
+            + self.presets[preset].render()
+            + separateur
+            + (self.text[end:] if end > 0 else "\n")
+        )
         self.path.write_text(fresh, encoding="utf-8", errors="surrogateescape")
         self.text = fresh
         return backup

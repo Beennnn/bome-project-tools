@@ -53,14 +53,19 @@ ZONES_STATE, ZONES_CTRL, FALLBACK = 6, 8, 4
 
 # Which zones each trigger must silence. This is the CONTRACT, written out in full,
 # because a test that derives its expectation from the configuration tests nothing.
-PANIC = {112: {1}, 113: {1},           # split points belonging to one zone
-         116: {2}, 122: {2},
-         120: {3}, 121: {3},
-         114: {1, 2},                  # SHARED split points: they separate two zones,
-         115: {2, 3},                  #   so moving one orphans held notes on both sides
-         102: {1, 2, 3}}               # global tone: transposes everything, cuts everything
+PANIC = {
+    112: {1},
+    113: {1},  # split points belonging to one zone
+    116: {2},
+    122: {2},
+    120: {3},
+    121: {3},
+    114: {1, 2},  # SHARED split points: they separate two zones,
+    115: {2, 3},  #   so moving one orphans held notes on both sides
+    102: {1, 2, 3},
+}  # global tone: transposes everything, cuts everything
 
-ALL_NOTES_OFF = lambda m: m.type == "control_change" and m.control == 123   # noqa: E731
+ALL_NOTES_OFF = lambda m: m.type == "control_change" and m.control == 123  # noqa: E731
 
 
 def panic_cases(trigs: list) -> list[Case]:
@@ -68,11 +73,14 @@ def panic_cases(trigs: list) -> list[Case]:
     out = []
     for cc, zones in PANIC.items():
         t = find_trigger(trigs, ZONES_STATE, cc)
-        out.append(Case(
-            title=f"CC{cc} ch{t.channel} -> panic {sorted(zones)}",
-            send=mido.Message("control_change", channel=t.channel - 1, control=cc, value=60),
-            expected={(z, 123) for z in zones},
-            keep=ALL_NOTES_OFF))
+        out.append(
+            Case(
+                title=f"CC{cc} ch{t.channel} -> panic {sorted(zones)}",
+                send=mido.Message("control_change", channel=t.channel - 1, control=cc, value=60),
+                expected={(z, 123) for z in zones},
+                keep=ALL_NOTES_OFF,
+            )
+        )
     return out
 
 
@@ -86,11 +94,14 @@ def controller_cases(trigs: list) -> list[Case]:
     # This preset captures the controller number into a variable -- it forwards ANY
     # CC -- so there is no number to look up, only a kind and a channel.
     t = find_any(trigs, ZONES_CTRL, "ControlChange")
-    return [Case(
-        title=f"CC1 ch{t.channel} modulation -> 3 zones",
-        send=mido.Message("control_change", channel=t.channel - 1, control=1, value=64),
-        expected={(1, 1), (2, 1), (3, 1)},
-        keep=lambda m: m.type == "control_change" and m.control == 1)]
+    return [
+        Case(
+            title=f"CC1 ch{t.channel} modulation -> 3 zones",
+            send=mido.Message("control_change", channel=t.channel - 1, control=1, value=64),
+            expected={(1, 1), (2, 1), (3, 1)},
+            keep=lambda m: m.type == "control_change" and m.control == 1,
+        )
+    ]
 
 
 def guard_cases(trigs: list) -> list[Case]:
@@ -102,15 +113,24 @@ def guard_cases(trigs: list) -> list[Case]:
     """
     t = find_trigger(trigs, ZONES_STATE, 112)
     return [
-        Case(title=f"CC112 on the WRONG channel {t.channel - 1} -> silence",
-             send=mido.Message("control_change", channel=t.channel - 2, control=112, value=60),
-             expect_silence=True, keep=ALL_NOTES_OFF),
-        Case(title="CC 99, unmapped -> silence",
-             send=mido.Message("control_change", channel=t.channel - 1, control=99, value=60),
-             expect_silence=True, keep=ALL_NOTES_OFF),
-        Case(title="NoteOn E3 -> silence, the test preset is gone",
-             send=mido.Message("note_on", channel=0, note=0x40, velocity=100),
-             expect_silence=True, keep=ALL_NOTES_OFF),
+        Case(
+            title=f"CC112 on the WRONG channel {t.channel - 1} -> silence",
+            send=mido.Message("control_change", channel=t.channel - 2, control=112, value=60),
+            expect_silence=True,
+            keep=ALL_NOTES_OFF,
+        ),
+        Case(
+            title="CC 99, unmapped -> silence",
+            send=mido.Message("control_change", channel=t.channel - 1, control=99, value=60),
+            expect_silence=True,
+            keep=ALL_NOTES_OFF,
+        ),
+        Case(
+            title="NoteOn E3 -> silence, the test preset is gone",
+            send=mido.Message("note_on", channel=0, note=0x40, velocity=100),
+            expect_silence=True,
+            keep=ALL_NOTES_OFF,
+        ),
     ]
 
 
@@ -131,14 +151,18 @@ def fallback_cases(trigs: list) -> list[Case]:
     t = find_trigger(trigs, FALLBACK, 119)
     ch = t.channel - 1
     return [
-        Case(title=f"CC119=127 ch{t.channel} -> fallback ARMED, echo 127",
-             send=mido.Message("control_change", channel=ch, control=119, value=127),
-             expected={(t.channel, 118)},
-             keep=lambda m: m.type == "control_change" and m.control == 118 and m.value == 127),
-        Case(title=f"CC119=0 ch{t.channel} -> disarmed, echo 0",
-             send=mido.Message("control_change", channel=ch, control=119, value=0),
-             expected={(t.channel, 118)},
-             keep=lambda m: m.type == "control_change" and m.control == 118 and m.value == 0),
+        Case(
+            title=f"CC119=127 ch{t.channel} -> fallback ARMED, echo 127",
+            send=mido.Message("control_change", channel=ch, control=119, value=127),
+            expected={(t.channel, 118)},
+            keep=lambda m: m.type == "control_change" and m.control == 118 and m.value == 127,
+        ),
+        Case(
+            title=f"CC119=0 ch{t.channel} -> disarmed, echo 0",
+            send=mido.Message("control_change", channel=ch, control=119, value=0),
+            expected={(t.channel, 118)},
+            keep=lambda m: m.type == "control_change" and m.control == 118 and m.value == 0,
+        ),
     ]
 
 
@@ -158,17 +182,21 @@ NOT COVERED, because a script cannot write to a hardware port — walk these by 
 
 def main() -> int:
     if not bome_running():
-        print("Bome MIDI Translator is not running: nothing would translate, and a run\n"
-              "of pure silence cannot be told apart from a broken configuration.",
-              file=sys.stderr)
+        print(
+            "Bome MIDI Translator is not running: nothing would translate, and a run\n"
+            "of pure silence cannot be told apart from a broken configuration.",
+            file=sys.stderr,
+        )
         return 2
     trigs = triggers(CONFIG)
     print(f"{CONFIG.name} · {len(trigs)} MIDI incoming actions in active presets\n")
     total = 0
-    for title, build in (("A · PANIC", panic_cases),
-                         ("B · CONTROLLERS", controller_cases),
-                         ("C · GUARDS — expected silence", guard_cases),
-                         ("D · FALLBACK arming", fallback_cases)):
+    for title, build in (
+        ("A · PANIC", panic_cases),
+        ("B · CONTROLLERS", controller_cases),
+        ("C · GUARDS — expected silence", guard_cases),
+        ("D · FALLBACK arming", fallback_cases),
+    ):
         print(f"╔═ {title} " + "═" * max(0, 60 - len(title)))
         try:
             cases = build(trigs)
