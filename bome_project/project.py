@@ -57,7 +57,7 @@ SEVEN RULES, each paid for at least once:
 AND THE MIDI ROUTER, which lives in the PROJECT, not in the settings (.bmts) file:
 
     [MIDI.routes]                  before the first preset, absent when there is none
-    In0=[1-9]_keyb                 route 0: from this port...
+    In0=Keyboard In                route 0: from this port...
     Out0=Ableton                   ...to this one, untouched (thru, no translator)
     In1=…
 
@@ -250,7 +250,7 @@ class Preset:
 def decode_ports(value: str) -> list[str]:
     """Port names out of a `DefaultInPorts` / `DefaultOutPorts` value.
 
-        MIDA 0002 0007 Ableton 0008 [10]_drm       (spaces added for reading)
+        MIDA 0002 0007 Ableton 0008 DrumPads       (spaces added for reading)
 
     `MIDA`, then the COUNT in four hex digits, then for each port its LENGTH in four
     hex digits followed by the name. `MIDA0000` is "no default". Read off real files

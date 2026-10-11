@@ -194,7 +194,9 @@ class Write(TempProject):
 
 
 # The router section as a real project carries it: before the first preset.
-ROUTES = "[MIDI.routes]\nIn0=[1-9]_keyb\nOut0=Ableton\nIn1=Keys\nOut1=Ableton\nIn2=Keys\nOut2=Synth"
+ROUTES = (
+    "[MIDI.routes]\nIn0=Keyboard In\nOut0=Ableton\nIn1=Keys\nOut1=Ableton\nIn2=Keys\nOut2=Synth"
+)
 WITH_ROUTES = FIXTURE.replace("\n\n[Preset.0]", "\n\n" + ROUTES + "\n\n[Preset.0]", 1)
 
 
@@ -207,7 +209,7 @@ class Routes(TempProject):
         self.assertEqual(
             self.load(WITH_ROUTES).routes,
             [
-                Route(0, "[1-9]_keyb", "Ableton"),
+                Route(0, "Keyboard In", "Ableton"),
                 Route(1, "Keys", "Ableton"),
                 Route(2, "Keys", "Synth"),  # one port, two destinations: two routes
             ],
@@ -236,11 +238,12 @@ class Routes(TempProject):
 
 
 class PortLists(unittest.TestCase):
-    # Copied from a real [Project] DefaultInPorts: the lengths are hex, 0x13 = 19.
-    REAL = "MIDA00030013microKey Air Ben IN0008[10]_drm0007Ableton"
+    # The shape of a real [Project] DefaultInPorts value, port names changed: the
+    # lengths are hex, 0x13 = 19.
+    REAL = "MIDA00030013Keyboard Controller0008DrumPads0007Ableton"
 
     def test_decodes_count_then_length_prefixed_names(self):
-        self.assertEqual(decode_ports(self.REAL), ["microKey Air Ben IN", "[10]_drm", "Ableton"])
+        self.assertEqual(decode_ports(self.REAL), ["Keyboard Controller", "DrumPads", "Ableton"])
 
     def test_mida0000_is_no_port(self):
         self.assertEqual(decode_ports("MIDA0000"), [])
