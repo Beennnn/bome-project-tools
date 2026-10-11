@@ -1,0 +1,4 @@
+# Lint and type-check tools, pinned so that a new release cannot turn CI red on its
+# own. Dependabot proposes the updates. The library and its tests need none of this.
+ruff==0.17.0
+mypy==2.4.0

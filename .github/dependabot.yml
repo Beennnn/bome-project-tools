@@ -1,0 +1,14 @@
+# Every version this repository uses is pinned: the GitHub Actions by commit SHA,
+# ruff and mypy in requirements-dev.txt. Pins do not age well on their own, so
+# Dependabot opens a pull request when a new release is out; the CI then shows
+# whether it changes anything.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly

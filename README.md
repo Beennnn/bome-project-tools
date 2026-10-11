@@ -4,222 +4,287 @@
 
 [![tests](https://github.com/Beennnn/bome-project-tools/actions/workflows/tests.yml/badge.svg)](https://github.com/Beennnn/bome-project-tools/actions/workflows/tests.yml)
 
-**Read, audit and safely rewrite Bome MIDI Translator Pro project files.** What follows
-is what we worked out about the `.bmtp` format while editing a real 88-translator
-project, with every rule verified against Bome 1.9.2 by reopening the file Bome
-produced. It is observation rather than documentation — corrections welcome.
+**Read, audit and safely rewrite [Bome MIDI Translator Pro](https://www.bome.com/products/miditranslator) project files (`.bmtp`), and test the result on real MIDI.**
 
-> **Status: private, work in progress.** It does one real job today — it replaced 21
-> translators with 3 in a live rig, verified 9 cases out of 9 against hardware — but the
-> library is shaped by that one job and nothing else has used it yet.
+Bome does not document the `.bmtp` format. Everything here was worked out by editing real projects and reopening the result in MIDI Translator Pro 1.9.2. It is observation rather than documentation: corrections are welcome.
 
----
+> **Unofficial.** This project is not affiliated with Bome Software. Bome's support team has helped correct parts of it on the [Bome forum](https://forum.bome.com/t/7925), but nothing here is official guidance.
 
-## Why
+## Contents
 
-A Bome project is a silent state machine. A translator that does not match does not
-complain: it simply does nothing, for the whole show. There is no log, no error, no
-"rule 14 never fired". The only verdict is to send a message and watch what comes out.
+- [What it does](#what-it-does)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [The audit](#the-audit)
+- [Editing a project safely](#editing-a-project-safely)
+- [Testing a project on real MIDI](#testing-a-project-on-real-midi)
+- [The `.bmtp` format](#the-bmtp-format)
+- [A pattern worth knowing: one trigger, many actions](#a-pattern-worth-knowing-one-trigger-many-actions)
+- [Development](#development)
+- [Limits](#limits)
+- [Credits and license](#credits-and-license)
 
-And a project grows by duplication, because a translator has **exactly one outgoing
-action**. Seven triggers that must each reach three destinations is not seven
-translators — it is twenty-one. Add a fourth destination and it is twenty-eight.
+## What it does
 
-Two tools follow from that: one that edits the file without breaking it, and one that
-proves the result on real MIDI.
+A Bome project is a silent state machine. A translator that does not match does not complain: it does nothing, for the whole show. There is no "rule 14 never fired". And a project grows by duplication, because a translator has exactly one outgoing action. This toolkit addresses both problems.
 
-## What we worked out about the format
-
-Nine rules, each of which cost us a mistake first. Offered in case they save someone
-else the same afternoon.
-
-```
-; ------- Bome MIDI Translator: signed project file
-[Preset.6]
-Active=1
-Comments=…\n…                  newlines are escaped
-Incoming0=MID3<Incoming …>     one translator per INDEX, spread over 4 keys
-Incoming1=Prfm<Incoming …>
-Name=Zones etat                the PRESET name, no index
-Name0=CC112 -> ya P1 bas       translator 0's name
-Options0=Actv01Stop00OutO00StMa00000001ya=uu
-Outgoing0=None                 "None" = this translator emits nothing
-PresetSwitchIgnore=0
-[Signatures]
-```
-
-1. **A translator is spread over four indexed keys** — `Name`, `Incoming`, `Outgoing`,
-   `Options` — never grouped. Touching one means recollecting all four.
-2. **Lines come out sorted alphabetically** by key name, then numerically by index.
-   Writing them in another order is harmless — Bome normalises on the next save — but
-   the normalising rewrite makes that save's diff unreadable, so it is worth matching.
-3. **Numbering must be contiguous.** Deleting translator 11 of 39 means renumbering the
-   27 that follow, across all four keys.
-4. **`Outgoing<N>=None`** — the literal string — is a translator that emits nothing. It
-   only sets variables through its rules. That is a free slot, and it is what makes
-   some refactors cost nothing.
-5. **The channel is 0-based.** `<Channel num="11"/>` is channel **12**. An adjacent
-   `Type="Any"` means "any channel" and makes the number moot. This one produced a
-   false regression diagnosis.
-6. **`Options` is a fixed-length record followed by rules**: `Actv01` active ·
-   `Stop00` does not stop processing · `OutO00` outgoing options · `StMa` + **eight hex
-   digits, UPPER case, giving the NUMBER of rules**, then the rules concatenated with no separator.
-   Get the count wrong and the extra rules are silently ignored.
-7. **The XML prefix names the action type**: `MID3` for MIDI, `Prfm` for a Perform. It
-   is not decorative — Bome uses it to pick its parser.
-8. **Bome rewrites the file from memory on save.** Editing while it is open means losing
-   your work at the next ⌘S. `refuse_if_running()` exists for that — and closing the project WINDOW is not
-   enough, the application has to quit.
-9. **Editing invalidates the signature.** The file still opens in MIDI Translator Pro,
-   but BomeBox and MT Player refuse it. Only Bome can sign: the remedy is to open the
-   project and save. Observed on a real rig — an invalid signature lived five days with
-   no visible consequence on a machine that only runs MT Pro.
-
-## The pattern that pays: one trigger, many actions
-
-A translator has one outgoing action, so *N* triggers reaching *M* destinations costs
-*N × M* translators. A **Perform** — a named event internal to Bome — turns the product
-into a sum. Every translator listening for that name fires:
-
-```
-before               21 translators        7 triggers × 3 destinations
-after                10                    7 emit "panic" + 3 execute
-a 4th destination    +1  instead of +7
-```
-
-The manual recommends Perform over the older 0 ms one-shot timer for exactly this, and
-guarantees a Perform is never retriggered — one emission, one event, no double firing.
-Its parameters carry values, so one destination can filter on what the trigger sent
-rather than needing its own copy.
-
-Real result on the rig this came from: `Zones etat` went from 39 to 21 translators,
-15 840 to 8 314 characters, with the ten other presets byte-identical.
-
-## Testing: what can and cannot be reached
-
-A translator is only testable if you can **write to the port it listens on**. On the rig
-above, five of ten presets listen to hardware, and no script can inject into those:
-
-| listens to | testable |
+| Module | What it is for |
 | --- | --- |
-| a virtual port (`Rig Bus`) | **yes** |
-| `P-Series`, `Breath Controller`, `Seaboard` | no — needs hands |
+| [`bome_project/project.py`](bome_project/project.py) | Read a project into objects (presets, translators, MIDI Router) and write a preset back, byte-identical when nothing changed. |
+| [`bome_project/audit.py`](bome_project/audit.py) | A read-only report of the mistakes that turn into silence on stage: variable scope, collisions between presets, early exits, routed messages that leak. |
+| [`bome_project/probe.py`](bome_project/probe.py) | Send MIDI through a running MIDI Translator Pro and check what comes out, including the cases where **nothing** must come out. |
 
-Which is an argument for a **port alias**: point one at the hardware, have every
-translator inherit it from the preset's `DefaultInPorts`, and reassign it to a virtual
-port when you want to test. Two traps found doing exactly that on a real rig — Bome
-**expands** an alias into each incoming action rather than resolving it at run time, and
-a port named on the translator **overrides** the preset default, so setting the default
-without also removing those names leaves it pure decoration.
+## Requirements
 
-Bome's built-in MIDI Router does port-to-port thru without spending a translator, but it
-does not remap: it replaces nothing whose translators change channel. It is stored in the
-**project**, as `[MIDI.routes]` before the first preset, not in the settings file;
-`Project(path).routes` reads it and the audit lists it, together with the translators on
-a routed port that can exit without executing: on that branch Bome sends the **raw**
-message on through the router — often intended, never visible in the translator list.
+- Python 3.9 or newer. The library itself uses the standard library only.
+- [`mido`](https://mido.readthedocs.io/) and `python-rtmidi`, **only** for sending real MIDI with `probe`:
 
-`plans/rig-zones.py` shows the shape: cases that assert what comes out, and **cases that
-assert silence**. The second kind is not optional — a plan that misses its target
-produces "nothing" everywhere and reads like a pass. That is precisely how a 0-of-6 run
-was mistaken for a regression when the configuration was fine and the test had the wrong
-channel.
+  ```bash
+  pip install mido python-rtmidi
+  ```
 
-## Use
+- MIDI Translator Pro for anything that touches a live configuration. The tools were verified against version 1.9.2 on macOS.
+
+There is no package to install: clone the repository and run the tools from its root.
 
 ```bash
-pip install mido python-rtmidi
-
-python3 -c "
-from pathlib import Path
-from bome_project.project import Project
-p = Project(Path('MyProject.bmtp'))
-for n, pr in sorted(p.presets.items()):
-    print(n, pr.name, len(pr.translators), 'translators',
-          '' if pr.active else '(inactive)')
-"
-
-python3 plans/rig-zones.py          # drive real MIDI, print a verdict
+git clone https://github.com/Beennnn/bome-project-tools.git
+cd bome-project-tools
 ```
 
-Writing always takes a timestamped backup first, and refuses to run while Bome is open.
+## Quick start
 
-## Auditing variables
+List the presets of a project:
 
-Bome gives you two-character variable names and almost no guard rails: `ma`, `pp`, `sg`
-carry no scope, no type and no owner, and **only ten names are actually local** —
-everything else is global, including the ones that look local.
+```python
+from pathlib import Path
+from bome_project.project import Project
+
+proj = Project(Path("MyProject.bmtp"))
+for number, preset in sorted(proj.presets.items()):
+    state = "" if preset.active else "(inactive)"
+    print(number, preset.name, len(preset.translators), "translators", state)
+for route in proj.routes:
+    print("router:", route.source, "->", route.destination)
+```
+
+Audit it:
+
+```bash
+python3 -m bome_project.audit MyProject.bmtp
+```
+
+## The audit
+
+```bash
+python3 -m bome_project.audit MyProject.bmtp
+```
+
+The audit only reads the file. Each section of the report answers one question:
+
+| Section | What it reports | Why it matters |
+| --- | --- | --- |
+| `scope` | Every variable, classed as local, global or **UNDOCUMENTED**. | Only ten names are local. Everything else is global, including names that *look* local. |
+| `collisions` | Globals written by more than one **active** preset. | Two presets writing the same global overwrite each other, in whatever order messages arrive. |
+| `de-facto globals` | Variables a preset reads but never writes. | The value comes from somewhere else, which is easy to break without noticing. |
+| `read but NEVER written` | Variables nothing ever assigns. | They are always 0. |
+| `outgoing actions with a VARIABLE as controller number` | A variable in the controller slot of a Control Change. | If the variable holds a stale value in 120–127, the translator sends *All Notes Off* or *All Sound Off*. |
+| `early exits that fire the outgoing action` | An `if(…)execute` that fires before a variable it needs is assigned. | The action is sent with whatever value was left over. Use `noexecute` when a branch means "send nothing". |
+| `MIDI router` | The router's port-to-port connections. | Messages that travel without any translator. |
+| `routed ports` | Translators on a routed input port that can exit with `noexecute`. | On that branch Bome sends the **raw** message on through the router. Often intended, never visible in the translator list. |
+
+An example, on a small made-up project:
 
 ```console
 $ python3 -m bome_project.audit MyProject.bmtp
+MyProject.bmtp — 4 presets, 3 active
 
 == scope ==
   UNDOCUMENTED  cu
-  global        g0 g1 g2
-  local         pp
-== de-facto globals: read in a preset that never writes them ==
-  Preset.0    ACTIVE New Preset                   reads cu
+  global        ga ka sg zz
+  local         oo pp qq rr vv
+
+== collisions: written by more than one ACTIVE preset ==
+  ka   Preset.0 «Keys A» · Preset.1 «Keys B»
+  -> 1
+
+== read but NEVER written anywhere (always 0) ==
+  cu ga
+
 == early exits that fire the outgoing action ==
-  Preset.0    ACTIVE Options2   'if(pp!=40)execute' fires before g0/g1 is assigned
+  Preset.0    ACTIVE Options0   'if(pp==0)execute' fires before ka/rr is assigned
+
+== routed ports: where the RAW message still goes on through the router ==
+  Preset.1   ACTIVE Keys B                       Incoming0  Keys -> Synth on its noexecute branch
 ```
 
-The convention it checks is in [`docs/variable-convention.md`](docs/variable-convention.md),
-with a [worked example](docs/variable-convention-example.md).
+(Some sections are shortened here.)
 
-> **Ten locals, not nine.** `oo` is one, and an earlier version of this convention both
-> omitted it and cited it as an example of a name that only *looks* local. Corrected on
-> 2026-09-27 after Steve Caldwell of Bome Customer Care pointed it out — which also means
-> the audit was reporting a genuine local as `UNDOCUMENTED`, the one false positive it
-> must not have. He also noted that locals can now be passed between translators through
-> Perform and Timers, which is what makes the parameter in the pattern above work — and
-> that heads `o`–`x` are global too when the second character differs (`oa`, `sg`, `pc`),
-> which the audit only learnt on 2026-10-11: until then it filed them as `UNDOCUMENTED`.
+### Variable scope, in short
 
-## Layout
+- **Locals** are exactly ten names: `oo pp qq rr ss tt uu vv ww xx`. They live for one incoming event of one translator, so two translators using `pp` never interfere.
+- **Globals** are a head letter from `g h i j k l m n y z` followed by any character (`ga`, `g0`, `mz`…), **or** a head from `o` to `x` followed by a *different* character (`oa`, `pc`, `sg`…). Their doubled form (`oo`…`xx`) is the local.
+- Anything else is reported as **UNDOCUMENTED**.
 
-```
-bome_project/project.py   read/write a .bmtp — the nine format rules live here
-bome_project/probe.py     send MIDI, listen, compare; assert silence too
-bome_project/audit.py     variable scope, collisions, silent-failure patterns
-plans/rig-zones.py        one rig's test plan, as a worked example
-docs/variable-convention.md   eight naming rules the audit checks
-tests/                    one test file per module, on synthetic projects;
-                          probe's tests use a fake MIDI port, no hardware
-```
+The naming convention the audit checks, and why, is in [`docs/variable-convention.md`](docs/variable-convention.md), with a [worked example](docs/variable-convention-example.md).
 
-The tests use the standard library only, so they need nothing installed:
+## Editing a project safely
 
-```console
-$ python3 -m unittest
-```
+```python
+from pathlib import Path
+from bome_project.project import Project, Translator
 
-GitHub Actions runs the same command on every push and pull request, on Python 3.9 to
-3.14 (Linux) and on macOS, plus a lint with [ruff](https://docs.astral.sh/ruff/) whose
-rules live in [`ruff.toml`](ruff.toml):
+proj = Project(Path("MyProject.bmtp"))
+preset = proj.presets[0]
 
-```console
-$ uvx ruff@0.17.0 check .
-$ uvx ruff@0.17.0 format .          # the CI runs it with --check
+# A copy of translator 0 that halves the value.
+source = preset.translators[0]
+copy = Translator()
+copy.name = source.name + " (half value)"
+copy.incoming, copy.outgoing = source.incoming, source.outgoing
+copy.set_rules(["pp=pp/2"])
+index = preset.add(copy)
+
+backup = proj.write(0)  # rewrites preset 0 only
+print(f"added translator {index}, backup in {backup.name}")
 ```
 
-and a type check with [mypy](https://mypy-lang.org/), configured in [`mypy.ini`](mypy.ini):
+What a write guarantees:
 
-```console
-$ uvx mypy@2.4.0
+- **It refuses to run while MIDI Translator Pro is open.** Bome keeps the project in memory and rewrites the whole file on its next save, so an edit made meanwhile would be lost. Closing the project window is not enough: the application has to quit.
+- **It takes a backup first**, named `MyProject.bmtp.bak-<date>-<time>-p<preset>`. A backup is never overwritten, even for two writes in the same second.
+- **Only the preset you write changes.** An unchanged preset is written back byte-identical, and an edit changes only its own lines, so a `diff` shows exactly what you did.
+- **The signature becomes invalid.** MIDI Translator Pro still opens the file, but BomeBox and MT Player refuse it until you open the project in MIDI Translator Pro and save it, which signs it again.
+
+The API in brief:
+
+| Object | Use |
+| --- | --- |
+| `Project(path)` | `.presets` (dict by number), `.routes`, `.write(preset)`, `.is_signed()` |
+| `Preset` | `.name`, `.active`, `.translators` (dict by index), `.add(t)`, `.remove([indices])` (renumbers) |
+| `Translator` | `.name`, `.incoming`, `.outgoing`, `.options`, `.rules()`, `.set_rules([...])`, `.channel`, `.number`, `.in_ports` |
+| `Route` | `.source`, `.destination` (read-only: see [Limits](#limits)) |
+
+## Testing a project on real MIDI
+
+A translator can only be tested by sending its incoming message and watching what comes out. That means you must be able to **write to the port it listens on**:
+
+| The translator listens to | Testable by a script |
+| --- | --- |
+| a virtual MIDI port | **yes** |
+| a hardware device | no: it needs a hand on the instrument |
+
+A tip: a **port alias** makes hardware translators testable. Point the alias at the hardware, let translators inherit it from the preset's default port, and reassign the alias to a virtual port while testing. Two traps: Bome *expands* an alias into each incoming action instead of resolving it at run time, and a port named on the translator *overrides* the preset default.
+
+[`examples/midi_test_plan.py`](examples/midi_test_plan.py) is a complete, short plan to copy and adapt. Its core:
+
+```python
+from bome_project.probe import Case, find_trigger, run, triggers
+
+trigs = triggers(Path("MyProject.bmtp"))
+t = find_trigger(trigs, preset=0, number=20)  # channel read from the project
+
+cases = [
+    Case(
+        "CC20 -> CC7",
+        send=mido.Message("control_change", channel=t.mido_channel, control=20, value=64),
+        expected={(1, 7)},  # (channel 1-16, CC or note number) that must come out
+    ),
+    Case(
+        "unmapped CC -> silence",
+        send=mido.Message("control_change", channel=t.mido_channel, control=99),
+        expect_silence=True,
+    ),
+]
+failures = run("Virtual Bus", cases)  # prints a table, returns the count
 ```
 
-This absorbed **bome-variable-naming** entirely: its audit, its convention and its
-worked example live here, and the audit now reads through `project.Project` instead of
-the second parser it arrived with — verified by diffing the full report before and after,
-which came out identical. That repository is archived and points here.
+Two rules make a plan trustworthy:
 
-## Not done yet
+1. **Read channels and numbers from the project** with `find_trigger` / `find_any` instead of retyping them. The channel is 0-based in the file (see below), and a plan that retypes numbers drifts away from the configuration it claims to test. `Trigger.mido_channel` gives the channel the way `mido` counts it, and raises if the trigger listens on any channel.
+2. **Declare the silences you expect** with `expect_silence=True`. A case that declares nothing **fails** when nothing comes out: a plan aimed at the wrong channel observes nothing everywhere, and that must never read as a pass.
 
-- The MIDI Router is read, never written: with a handful of routes per project, Bome's
-  own editor is quicker than a script, and a writer would be a format guess nobody has
-  reopened in MT Pro. Its format was observed on one project only -- the reader refuses
-  any shape it has not seen.
-- One rig, one Bome version (1.9.2), macOS only. Everything here is verified, but
-  verified once.
+MIDI Translator Pro must be running during the test: without it nothing translates, and a run of pure silence cannot be told apart from a broken configuration.
 
-MIT.
+## The `.bmtp` format
+
+A project is a text file of sections:
+
+```
+; ------- Bome MIDI Translator: signed project file
+;
+[MIDI.routes]                  optional: the MIDI Router
+In0=Keyboard In
+Out0=DAW
+
+[Preset.0]
+Active=1
+Name=Controllers               the PRESET name, no index
+Incoming0=MID3<Incoming …>     one translator per INDEX, spread over four keys
+Name0=CC20 -> CC7              translator 0's name
+Options0=Actv01Stop00OutO00StMa00000001pp=pp/2
+Outgoing0=MID3<Outgoing …>
+PresetSwitchIgnore=0
+
+[Project]
+DefaultInPorts=MIDA0000
+
+[Signatures]
+…
+```
+
+What we learnt, each point the hard way:
+
+1. **A translator is spread over four indexed keys**: `Name<N>`, `Incoming<N>`, `Outgoing<N>`, `Options<N>`. Touching one means reading all four.
+2. **Keys are sorted as text, not as numbers**: `Name`, `Name0`, `Name1`, `Name10`, `Name11`, `Name2`… Any other order still loads, but Bome rewrites the whole preset on its next save, which buries your change in a noisy diff.
+3. **Numbering must be contiguous.** Deleting translator 11 of 39 means renumbering the 27 that follow, across all four keys. `Preset.remove` does it.
+4. **`Outgoing<N>=None`**, the literal string, is a translator that sends nothing. It only sets variables through its rules.
+5. **The channel is 0-based**: `<Channel num="11"/>` is channel **12**. An adjacent `Type="Any"` means any channel.
+6. **`Options` is a fixed-length record followed by the rules**: `Actv01` (active), `Stop00` (does not stop processing), `OutO00` (outgoing options), then `StMa` and **eight upper-case hex digits giving the number of rules**, then the rules with no separator. With a wrong count, the extra rules are silently ignored.
+7. **A prefix names the action type**: `MID3` for MIDI (XML), `Prfm` for a Perform. `MID2` is an older MIDI form still written for raw patterns: a port list, then one byte per two characters, either upper-case hex (`F0`) or a variable (`pp`). An incoming pattern *captures* its variables, an outgoing one *sends* them.
+8. **Port lists** (`DefaultInPorts`, `DefaultOutPorts`, `MID2` actions) are encoded as `MIDA`, the number of ports in four hex digits, then each name preceded by its length in four hex digits: `MIDA00010007Ableton` is one port, "Ableton". `MIDA0000` means none.
+9. **The MIDI Router lives in the project**, in `[MIDI.routes]` before the first preset, as `In<N>` / `Out<N>` pairs (one destination per pair). It sends messages port to port without any translator, and without remapping.
+10. **Sections come after the last preset** (`[Project]`, `[Signatures]`): a preset ends at the next section of any kind, not at the next preset.
+11. **Bome rewrites the file from memory on save**, and **editing invalidates the signature** (see [Editing a project safely](#editing-a-project-safely)).
+
+## A pattern worth knowing: one trigger, many actions
+
+A translator has one outgoing action, so *N* triggers that must each reach *M* destinations cost *N × M* translators. A **Perform**, a named event internal to Bome, turns that product into a sum: each trigger emits the event, and every translator listening for its name fires.
+
+```
+before                21 translators     7 triggers × 3 destinations
+after                 10                 7 emit the event + 3 execute it
+a fourth destination  +1 instead of +7
+```
+
+The Bome manual recommends a Perform over a 0 ms one-shot timer for this, and a Perform is never retriggered. Its parameters carry values, so each destination can filter on what the trigger sent instead of needing its own copy.
+
+## Development
+
+```bash
+python3 -m unittest                      # the tests: standard library only
+pip install -r requirements-dev.txt      # the pinned lint and type-check tools
+ruff check .
+ruff format .                            # the CI runs it with --check
+mypy
+```
+
+- **Tests** run on made-up projects whose lines copy the shapes MIDI Translator Pro writes. `probe` is tested through a fake MIDI port, so the suite needs neither `mido` nor MIDI Translator Pro.
+- **CI** ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs on every push and pull request: the tests on Python 3.9 to 3.14 (Linux) and on macOS, [ruff](https://docs.astral.sh/ruff/) lint and format checks ([`ruff.toml`](ruff.toml)), and [mypy](https://mypy-lang.org/) ([`mypy.ini`](mypy.ini)).
+- **Pinned versions**: GitHub Actions are pinned by commit SHA and the tools in [`requirements-dev.txt`](requirements-dev.txt); Dependabot proposes the updates.
+- `.git-blame-ignore-revs` lists the one commit that only reformatted the code. To skip it locally in `git blame`: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+- Notes for contributors and coding agents are in [`CLAUDE.md`](CLAUDE.md).
+
+## Limits
+
+- **Verified on one version**, MIDI Translator Pro 1.9.2 on macOS. Some format details (the router, `MID2`) were seen in only a few projects; the readers refuse any shape they have not seen rather than guess.
+- **The MIDI Router is read, never written.** A project has a handful of routes, which Bome's own editor changes faster than a script would.
+- **Nothing reads the settings file** (`.bmts`), which holds the application's ports and aliases rather than the project.
+
+## Credits and license
+
+Thanks to Steve Caldwell of Bome, who corrected parts of the variable-scope rules, and to Florian of Bome for his feedback, on the [Bome forum](https://forum.bome.com/t/7925).
+
+This repository replaces the earlier `bome-variable-naming` repository, whose audit and convention now live here.
+
+[MIT](LICENSE).
