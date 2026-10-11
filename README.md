@@ -177,7 +177,8 @@ bome_project/probe.py     send MIDI, listen, compare; assert silence too
 bome_project/audit.py     variable scope, collisions, silent-failure patterns
 plans/rig-zones.py        one rig's test plan, as a worked example
 docs/variable-convention.md   eight naming rules the audit checks
-tests/test_audit.py       the audit's tests, on a synthetic project
+tests/                    one test file per module, on synthetic projects;
+                          probe's tests use a fake MIDI port, no hardware
 ```
 
 The tests use the standard library only, so they need nothing installed:
