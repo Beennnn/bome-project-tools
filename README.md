@@ -195,6 +195,7 @@ rules live in [`ruff.toml`](ruff.toml):
 
 ```console
 $ uvx ruff@0.17.0 check .
+$ uvx ruff@0.17.0 format .          # the CI runs it with --check
 ```
 
 This absorbed **bome-variable-naming** entirely: its audit, its convention and its

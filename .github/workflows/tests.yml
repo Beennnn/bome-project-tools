@@ -15,8 +15,10 @@ permissions:
 jobs:
   lint:
     # Rules live in ruff.toml at the repo root, so this verdict and a local
-    # `ruff check` agree. The ruff version is pinned: a new release can add rules
-    # and turn main red without a single line of this repo changing.
+    # `ruff check` / `ruff format` agree. `--diff` prints what would change, so a
+    # red format step says exactly which lines to fix. The ruff version is pinned:
+    # a new release can add rules and turn main red without a single line of this
+    # repo changing.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -26,6 +28,7 @@ jobs:
           python-version: "3.14"
       - run: python -m pip install ruff==0.17.0
       - run: ruff check --output-format=github .
+      - run: ruff format --check --diff .
 
   unittest:
     # The suite is stdlib only and needs neither mido nor MT Pro (probe's tests use a
