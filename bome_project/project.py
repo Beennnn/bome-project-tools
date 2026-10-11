@@ -194,12 +194,12 @@ class Preset:
         lines = [f"{k}={v}" for k, v in self.header.items()]
         for i in sorted(self.translators):
             t = self.translators[i]
-            for field, val in (("Name", t.name), ("Incoming", t.incoming),
-                               ("Outgoing", t.outgoing), ("Options", t.options)):
-                if val or field == "Outgoing":
-                    lines.append(f"{field}{i}={val}")
+            for key, val in (("Name", t.name), ("Incoming", t.incoming),
+                             ("Outgoing", t.outgoing), ("Options", t.options)):
+                if val or key == "Outgoing":
+                    lines.append(f"{key}{i}={val}")
 
-        def rank(l: str):
+        def rank(line: str):
             """The KEY, compared as text. Bome sorts lexicographically, not numerically.
 
             Measured on a real 21-translator preset on 2026-09-27:
@@ -213,7 +213,7 @@ class Preset:
             reproduces Bome's order exactly, `Name` before `Name0` included, because a
             prefix sorts before any longer string.
             """
-            return l.split("=", 1)[0]
+            return line.split("=", 1)[0]
         return f"[Preset.{self.number}]\n" + "\n".join(sorted(lines, key=rank))
 
 

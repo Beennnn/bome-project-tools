@@ -39,9 +39,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import mido                                                        # noqa: E402
-from bome_project.probe import Case, find_any, find_trigger, run, triggers  # noqa: E402
-from bome_project.project import bome_running                      # noqa: E402
+import mido
+
+from bome_project.probe import Case, find_any, find_trigger, run, triggers
+from bome_project.project import bome_running
 
 # The project this plan describes. Point BMTP at your own to adapt it -- everything
 # below reads channels and numbers FROM that file, so only the preset indices and the

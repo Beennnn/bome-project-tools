@@ -148,9 +148,8 @@ class ProbeVerdicts(unittest.TestCase):
     """What counts as a pass. One Probe per test: ~0.5 s each, for the port settle."""
 
     def play(self, responder, case):
-        with mock.patch.object(probe, "mido", FakeMido(responder)):
-            with probe.Probe("virtual") as p:
-                return p.play(case)
+        with mock.patch.object(probe, "mido", FakeMido(responder)), probe.Probe("virtual") as p:
+            return p.play(case)
 
     def test_the_expected_messages_pass(self):
         ok, seen = self.play(lambda m: [cc(0, 7), cc(1, 8)],
@@ -193,9 +192,8 @@ class ProbeVerdicts(unittest.TestCase):
         self.assertEqual(seen, {(1, 60)})
 
     def test_without_mido_the_probe_says_what_to_install(self):
-        with mock.patch.object(probe, "mido", None):
-            with self.assertRaises(SystemExit) as e:
-                probe.Probe("virtual")
+        with mock.patch.object(probe, "mido", None), self.assertRaises(SystemExit) as e:
+            probe.Probe("virtual")
         self.assertIn("pip install mido", str(e.exception))
 
 

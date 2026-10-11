@@ -27,7 +27,7 @@ OUT = ('MID3<Outgoing Action="MIDI"><Ports><Port>Synth</Port></Ports>'
 
 def bome_sorted(lines):
     """Bome's order: the KEY compared as text (rule 2)."""
-    return sorted(lines, key=lambda l: l.split("=", 1)[0])
+    return sorted(lines, key=lambda line: line.split("=", 1)[0])
 
 
 def preset_block(num, name, count, active=1):
@@ -109,7 +109,8 @@ class Render(TempProject):
             self.assertEqual(proj.presets[num].render(), self.block(num), num)
 
     def test_keys_sort_as_text_not_as_numbers(self):
-        keys = [l.split("=", 1)[0] for l in Project(self.path).presets[1].render().split("\n")[1:]]
+        rendered = Project(self.path).presets[1].render().split("\n")[1:]
+        keys = [line.split("=", 1)[0] for line in rendered]
         names = [k for k in keys if k.startswith("Name")]
         self.assertEqual(names[:4], ["Name", "Name0", "Name1", "Name10"])
         self.assertEqual(names[4], "Name2")
@@ -166,9 +167,9 @@ class Write(TempProject):
     def test_refuses_to_write_while_bome_runs(self):
         proj = Project(self.path)
         proj.presets[0].translators[0].name = "edited"
-        with mock.patch.object(project, "bome_running", return_value=True):
-            with self.assertRaises(SystemExit):
-                proj.write(0)
+        with mock.patch.object(project, "bome_running", return_value=True), \
+                self.assertRaises(SystemExit):
+            proj.write(0)
         self.assertEqual(self.path.read_text(encoding="utf-8"), FIXTURE)
         self.assertEqual(self.backups(), [])
 

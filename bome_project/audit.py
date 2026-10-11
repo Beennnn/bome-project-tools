@@ -70,23 +70,23 @@ def payload(options_line):
 def scan(lines):
     """-> (writes, reads) over one preset."""
     writes, reads = set(), set()
-    for l in lines:
-        if not re.match(r"(Options|Incoming|Outgoing)\d+=", l):
+    for line in lines:
+        if not re.match(r"(Options|Incoming|Outgoing)\d+=", line):
             continue
-        if l.startswith("Incoming"):
-            writes |= set(re.findall(r'var="(%s)" Type="SetVar"' % VAR, l))
+        if line.startswith("Incoming"):
+            writes |= set(re.findall(r'var="(%s)" Type="SetVar"' % VAR, line))
             # An incoming Perform or Timer RECEIVES its parameters into variables --
             # <Params>qq</Params> is a write, not a read. Missing this reported every
             # parameter variable as "read but never written", the same false positive
             # class as the one that had `oo` filed under UNDOCUMENTED.
-            for params in re.findall(r"<Params>([^<]*)</Params>", l):
+            for params in re.findall(r"<Params>([^<]*)</Params>", line):
                 writes |= set(re.findall(r"\b(%s)\b" % VAR, params))
-        elif l.startswith("Outgoing"):
-            reads |= set(re.findall(r'var="(%s)"' % VAR, l))
-            for params in re.findall(r"<Params>([^<]*)</Params>", l):
+        elif line.startswith("Outgoing"):
+            reads |= set(re.findall(r'var="(%s)"' % VAR, line))
+            for params in re.findall(r"<Params>([^<]*)</Params>", line):
                 reads |= set(re.findall(r"\b(%s)\b" % VAR, params))
         else:
-            p = payload(l)
+            p = payload(line)
             writes |= set(re.findall(r"(%s)=(?!=)" % VAR, p))
             reads |= set(re.findall(r"[%s](%s)" % (re.escape(OPS), VAR), p))
     return writes, reads
@@ -121,8 +121,8 @@ def main(path):
         names = sorted(v for v in allvars if classify(v) == kind)
         if names:
             print("  %-13s %s" % (kind, " ".join(names)))
-    print("  (UNDOCUMENTED = neither one of the ten locals nor a global: head g/h/i/j/k/l/m/n/y/z,"
-          " or head o..x with a different second character)")
+    print("  (UNDOCUMENTED = neither one of the ten locals nor a global:"
+          " head g/h/i/j/k/l/m/n/y/z, or head o..x with a different second character)")
 
     print("\n== collisions: written by more than one ACTIVE preset ==")
     print("  (locals are excluded: oo..xx cannot leak between translators)")
@@ -150,27 +150,27 @@ def main(path):
 
     print("\n== outgoing actions with a VARIABLE as controller number ==")
     for pid, p in sorted(presets.items()):
-        for l in p["lines"]:
-            if not l.startswith("Outgoing"):
+        for line in p["lines"]:
+            if not line.startswith("Outgoing"):
                 continue
-            m = re.search(r'Type="ControlChange".*?<Value1 var="(%s)"' % VAR, l)
+            m = re.search(r'Type="ControlChange".*?<Value1 var="(%s)"' % VAR, line)
             if m:
                 print("  %-11s %-6s %-12s controller = %s  [%s]"
-                      % (pid, "ACTIVE" if p["active"] else "off", l.split("=")[0],
+                      % (pid, "ACTIVE" if p["active"] else "off", line.split("=")[0],
                          m.group(1), classify(m.group(1))))
 
     print("\n== early exits that fire the outgoing action ==")
     for pid, p in sorted(presets.items()):
-        for l in p["lines"]:
-            if not l.startswith("Options"):
+        for line in p["lines"]:
+            if not line.startswith("Options"):
                 continue
-            body = payload(l)
+            body = payload(line)
             for m in re.finditer(r"if\([^)]*\)execute", body):
                 tail = body[m.end():]
                 assigned = set(re.findall(r"(%s)=(?!=)" % VAR, tail))
                 if assigned:
                     print("  %-11s %-6s %-10s '%s' fires before %s is assigned"
-                          % (pid, "ACTIVE" if p["active"] else "off", l.split("=")[0],
+                          % (pid, "ACTIVE" if p["active"] else "off", line.split("=")[0],
                              m.group(0), "/".join(sorted(assigned))))
     print("\n  ('noexecute' leaves the rules WITHOUT firing — use it when the branch means"
           "\n   'nothing to send'. Reserved Channel Mode targets: %s)"
