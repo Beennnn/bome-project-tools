@@ -1,0 +1,34 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    # The suite is stdlib only and needs neither mido nor MT Pro (probe's tests use a
+    # fake MIDI port), so a plain runner is enough: no install step.
+    # 3.9 is the oldest version the suite was verified on (2026-10-11); macOS is added
+    # once because it is the platform the tools actually run on, next to MT Pro.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python: "3.14"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5   # the suite takes ~4 s; anything near 5 min is a hang
+    steps:
+      # Actions pinned by commit SHA: a tag can be moved, a SHA cannot.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m unittest -v

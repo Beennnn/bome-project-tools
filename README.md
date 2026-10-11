@@ -2,6 +2,8 @@
 
 # bome-project-tools
 
+[![tests](https://github.com/Beennnn/bome-project-tools/actions/workflows/tests.yml/badge.svg)](https://github.com/Beennnn/bome-project-tools/actions/workflows/tests.yml)
+
 **Read, audit and safely rewrite Bome MIDI Translator Pro project files.** What follows
 is what we worked out about the `.bmtp` format while editing a real 88-translator
 project, with every rule verified against Bome 1.9.2 by reopening the file Bome
@@ -186,6 +188,9 @@ The tests use the standard library only, so they need nothing installed:
 ```console
 $ python3 -m unittest
 ```
+
+GitHub Actions runs the same command on every push and pull request, on Python 3.9 to
+3.14 (Linux) and on macOS.
 
 This absorbed **bome-variable-naming** entirely: its audit, its convention and its
 worked example live here, and the audit now reads through `project.Project` instead of
