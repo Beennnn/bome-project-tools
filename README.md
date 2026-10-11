@@ -3,16 +3,48 @@
 # bome-project-tools
 
 [![tests](https://github.com/Beennnn/bome-project-tools/actions/workflows/tests.yml/badge.svg)](https://github.com/Beennnn/bome-project-tools/actions/workflows/tests.yml)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+![no dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+[![license: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-**Read, audit and safely rewrite [Bome MIDI Translator Pro](https://www.bome.com/products/miditranslator) project files (`.bmtp`), and test the result on real MIDI.**
+**Read, audit and safely rewrite [Bome MIDI Translator Pro](https://www.bome.com/products/miditranslator) project files (`.bmtp`), and prove on real MIDI that they do what you meant.**
 
-Bome does not document the `.bmtp` format. Everything here was worked out by editing real projects and reopening the result in MIDI Translator Pro 1.9.2. It is observation rather than documentation: corrections are welcome.
+For anyone whose MT Pro project has grown past what is comfortable to check by eye: a live rig, a studio router, a controller remap with dozens of translators.
 
-> **Unofficial.** This project is not affiliated with Bome Software. Bome's support team has helped correct parts of it on the [Bome forum](https://forum.bome.com/t/7925), but nothing here is official guidance.
+> **Unofficial.** This project is not affiliated with Bome Software. Bome does not document the `.bmtp` format: everything here was worked out by editing real projects and reopening them in MIDI Translator Pro 1.9.2, and Bome's support team has helped correct parts of it on the [Bome forum](https://forum.bome.com/t/7925). Corrections are welcome.
+
+## Why use it
+
+MIDI Translator Pro is powerful enough that projects grow, and past a certain size four problems appear. Each module answers one of them.
+
+| The problem | What you get |
+| --- | --- |
+| **A mistake is silent.** A translator that never matches does nothing, for the whole show, with no error and no log. | **`probe`** sends MIDI through the running MT Pro and checks what comes out — and checks that nothing comes out where nothing should. A case that observes nothing only passes if it said it expected silence, so a test aimed at the wrong channel does not slip through as a pass. |
+| **Variables have invisible scope.** Two-letter names, only ten of them local: a global reused by two presets, or a stale value in a controller slot, becomes *All Notes Off* on stage. | **`audit`** reports, in one read-only pass, every variable's scope, collisions between presets, values read but never written, early exits that fire too soon, and messages that leak through the MIDI Router. |
+| **Bulk edits are done by hand.** One outgoing action per translator: 7 triggers × 3 destinations is 21 translators to keep in sync. | **`project`** edits the file from Python: a backup before every write, a refusal while MT Pro is open, and an unchanged preset written back byte-identical, so a `diff` shows exactly your change. |
+| **The format is undocumented.** | **This README** sets out every rule worked out so far, each paid for by a mistake once — see [The `.bmtp` format](#the-bmtp-format). |
+
+Everything is plain Python with no dependency (only `probe` needs [`mido`](https://mido.readthedocs.io/) to talk MIDI), and 95 tests run on every change.
+
+### How the pieces fit together
+
+```mermaid
+flowchart LR
+    F[("MyProject.bmtp")] --> A["audit<br/>read-only report"]
+    F --> P["project<br/>edit, with a backup"]
+    P --> F
+    F --> M["MIDI Translator Pro<br/>open, save (re-signs)"]
+    M --> T["probe<br/>send MIDI, check the output"]
+```
+
+1. **Audit** the project to see what is risky before touching anything.
+2. **Edit** it with `project` while MT Pro is closed, then review the `diff`.
+3. **Open and save** it in MT Pro, which loads the change and signs the file again.
+4. **Probe** it: send real MIDI through MT Pro and check every expected output and every expected silence.
 
 ## Contents
 
-- [What it does](#what-it-does)
+- [Why use it](#why-use-it)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [The audit](#the-audit)
@@ -24,15 +56,13 @@ Bome does not document the `.bmtp` format. Everything here was worked out by edi
 - [Limits](#limits)
 - [Credits and license](#credits-and-license)
 
-## What it does
-
-A Bome project is a silent state machine. A translator that does not match does not complain: it does nothing, for the whole show. There is no "rule 14 never fired". And a project grows by duplication, because a translator has exactly one outgoing action. This toolkit addresses both problems.
-
-| Module | What it is for |
+| Module | In one line |
 | --- | --- |
-| [`bome_project/project.py`](bome_project/project.py) | Read a project into objects (presets, translators, MIDI Router) and write a preset back, byte-identical when nothing changed. |
-| [`bome_project/audit.py`](bome_project/audit.py) | A read-only report of the mistakes that turn into silence on stage: variable scope, collisions between presets, early exits, routed messages that leak. |
-| [`bome_project/probe.py`](bome_project/probe.py) | Send MIDI through a running MIDI Translator Pro and check what comes out, including the cases where **nothing** must come out. |
+| [`bome_project/project.py`](bome_project/project.py) | Read a project into objects (presets, translators, MIDI Router) and write a preset back safely. |
+| [`bome_project/audit.py`](bome_project/audit.py) | The read-only report of the mistakes that turn into silence on stage. |
+| [`bome_project/probe.py`](bome_project/probe.py) | Send MIDI through a running MT Pro and check what comes out — and what must not. |
+| [`examples/midi_test_plan.py`](examples/midi_test_plan.py) | A short test plan to copy and adapt. |
+| [`docs/variable-convention.md`](docs/variable-convention.md) | The variable naming convention the audit checks, with a [worked example](docs/variable-convention-example.md). |
 
 ## Requirements
 
