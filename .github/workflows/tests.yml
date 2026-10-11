@@ -1,6 +1,6 @@
 name: tests
 
-# Lint and unit tests. The workflow keeps its historic name so the README badge
+# Lint, type check and unit tests. The workflow keeps its historic name so the README badge
 # and its URL stay stable.
 
 on:
@@ -29,6 +29,19 @@ jobs:
       - run: python -m pip install ruff==0.17.0
       - run: ruff check --output-format=github .
       - run: ruff format --check --diff .
+
+  typecheck:
+    # Settings live in mypy.ini (default mode + check_untyped_defs, so the tests'
+    # bodies are checked too). mypy is pinned for the same reason as ruff.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.14"
+      - run: python -m pip install mypy==2.4.0
+      - run: mypy
 
   unittest:
     # The suite is stdlib only and needs neither mido nor MT Pro (probe's tests use a

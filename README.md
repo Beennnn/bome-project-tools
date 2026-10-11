@@ -198,6 +198,12 @@ $ uvx ruff@0.17.0 check .
 $ uvx ruff@0.17.0 format .          # the CI runs it with --check
 ```
 
+and a type check with [mypy](https://mypy-lang.org/), configured in [`mypy.ini`](mypy.ini):
+
+```console
+$ uvx mypy@2.4.0
+```
+
 This absorbed **bome-variable-naming** entirely: its audit, its convention and its
 worked example live here, and the audit now reads through `project.Project` instead of
 the second parser it arrived with — verified by diffing the full report before and after,
