@@ -267,5 +267,60 @@ class Report(unittest.TestCase):
         self.assertNotIn("noexecute' fires", self.section("early exits"))
 
 
+def mida(*names):
+    return "MIDA%04X" % len(names) + "".join("%04X%s" % (len(n), n) for n in names)
+
+
+class RouterLeaks(unittest.TestCase):
+    """A translator on a ROUTED port lets the raw message through on `noexecute`."""
+
+    def report(self, *translators, preset_default=None, project_default=None):
+        header = f"DefaultInPorts={preset_default}\n" if preset_default else ""
+        body = "\n".join(
+            f"Incoming{i}={inc}\nName{i}=t{i}\nOptions{i}={options(*rules)}\nOutgoing{i}=None"
+            for i, (inc, rules) in enumerate(translators)
+        )
+        project = f"[Project]\nDefaultInPorts={project_default or 'MIDA0000'}\n"
+        text = (
+            ";\n[MIDI.routes]\nIn0=Keys\nOut0=Ableton\n\n"
+            f"[Preset.0]\nActive=1\n{header}Name=P\n{body}\n\n{project}"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "routed.bmtp"
+            path.write_text(text, encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                audit.main(path)
+        return out.getvalue().split("== routed ports", 1)[1]
+
+    KEYS = MID_IN.format(ch="qq", v1="rr", v2="pp")  # names port Keys, which is routed
+
+    def test_a_noexecute_branch_on_a_routed_port_is_reported(self):
+        section = self.report((self.KEYS, ["if(pp<64)noexecute"]))
+        self.assertIn("Incoming0  Keys -> Ableton on its noexecute branch", section)
+        self.assertIn("-> 1", section)
+
+    def test_a_translator_that_always_executes_is_not(self):
+        self.assertIn("\n  none\n", self.report((self.KEYS, ["pp=1"])))
+
+    def test_a_port_that_is_not_routed_is_not(self):
+        other = self.KEYS.replace("<Port>Keys</Port>", "<Port>Pads</Port>")
+        self.assertIn("\n  none\n", self.report((other, ["if(pp<64)noexecute"])))
+
+    def test_mid2_ports_are_read_too(self):
+        section = self.report(("MID2" + mida("Keys") + "ppqqrr", ["if(pp<64)noexecute"]))
+        self.assertIn("Keys -> Ableton", section)
+
+    def test_no_port_falls_back_to_the_preset_default_then_the_project_default(self):
+        bare = ("MID2ppqqrr", ["if(pp<64)noexecute"])
+        self.assertIn("Keys -> Ableton", self.report(bare, preset_default=mida("Keys")))
+        self.assertIn("Keys -> Ableton", self.report(bare, project_default=mida("Keys")))
+        # the preset default wins over the project's
+        self.assertIn(
+            "\n  none\n",
+            self.report(bare, preset_default=mida("Pads"), project_default=mida("Keys")),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

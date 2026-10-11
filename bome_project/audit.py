@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-from .project import Project
+from .project import Project, decode_ports
 
 # TEN locals, not nine. `oo` was missing here until 2026-09-27, when Steve Caldwell of
 # Bome Customer Care pointed it out on the forum -- so the audit was reporting a genuine
@@ -213,12 +213,76 @@ def main(path):
         % ", ".join("CC%d=%s" % (k, v) for k, v in sorted(CHANNEL_MODE.items()))
     )
 
+    proj = Project(Path(path))
     print("\n== MIDI router: port-to-port thru, no translator involved ==")
-    routes = Project(Path(path)).routes
-    for r in routes:
+    for r in proj.routes:
         print("  %-30s -> %s" % (r.source, r.destination))
-    if not routes:
+    if not proj.routes:
         print("  none")
+    else:
+        router_leaks(proj)
+
+
+def input_ports(proj, preset, translator):
+    """The ports a translator listens on: its own, else its preset's, else the project's.
+
+    That order is the README's observation that a port named on the translator
+    OVERRIDES the preset default. An empty list means none is declared anywhere.
+    """
+    if translator.in_ports:
+        return translator.in_ports
+    for value in (preset.header.get("DefaultInPorts"), project_default_in(proj)):
+        if value and decode_ports(value):
+            return decode_ports(value)
+    return []
+
+
+def project_default_in(proj):
+    m = re.search(r"^\[Project\]$(.*?)(?:^\[|\Z)", proj.text, re.M | re.S)
+    found = m and re.search(r"^DefaultInPorts=(.*)$", m.group(1), re.M)
+    return found.group(1) if found else None
+
+
+def router_leaks(proj):
+    """Translators on a ROUTED input port that can skip their outgoing action.
+
+    Steve Caldwell (Bome, forum topic 7925): when the rules exit without executing the
+    outgoing action, the incoming message "will pass through untouched based on how you
+    have your MIDI Router set". So on a routed port, every `noexecute` branch sends the
+    RAW message on to the route's destination. Often intended -- a translator that
+    handles a few values and lets the rest through -- but invisible in the translator
+    list, which is why it is reported.
+    """
+    routed: dict[str, list[str]] = {}  # source port -> destinations
+    for r in proj.routes:
+        routed.setdefault(r.source, []).append(r.destination)
+    print("\n== routed ports: where the RAW message still goes on through the router ==")
+    hits = 0
+    for num in sorted(proj.presets):
+        pr = proj.presets[num]
+        for i in sorted(pr.translators):
+            tr = pr.translators[i]
+            if "noexecute" not in tr.options:
+                continue
+            for port in input_ports(proj, pr, tr):
+                if port in routed:
+                    hits += 1
+                    print(
+                        "  Preset.%-3d %-6s %-28s Incoming%-2d %s -> %s on its noexecute branch"
+                        % (
+                            num,
+                            "ACTIVE" if pr.active else "off",
+                            (pr.name or "")[:28],
+                            i,
+                            port,
+                            ", ".join(routed[port]),
+                        )
+                    )
+    print(
+        "  none"
+        if not hits
+        else "  -> %d (intended when a translator lets the rest through)" % hits
+    )
 
 
 if __name__ == "__main__":

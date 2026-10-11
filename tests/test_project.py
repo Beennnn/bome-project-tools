@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest import mock
 
 from bome_project import project
-from bome_project.project import Preset, Project, Route, Translator
+from bome_project.project import Preset, Project, Route, Translator, decode_ports, read_ports
 
 IN = (
     'MID3<Incoming Action="MIDI"><Ports><Port>Keys</Port></Ports>'
@@ -233,6 +233,46 @@ class Routes(TempProject):
     def test_a_route_missing_its_destination_raises(self):
         with self.assertRaisesRegex(ValueError, r"route 2 has only \['In'\]"):
             _ = self.load(WITH_ROUTES.replace("\nOut2=Synth", "")).routes
+
+
+class PortLists(unittest.TestCase):
+    # Copied from a real [Project] DefaultInPorts: the lengths are hex, 0x13 = 19.
+    REAL = "MIDA00030013microKey Air Ben IN0008[10]_drm0007Ableton"
+
+    def test_decodes_count_then_length_prefixed_names(self):
+        self.assertEqual(decode_ports(self.REAL), ["microKey Air Ben IN", "[10]_drm", "Ableton"])
+
+    def test_mida0000_is_no_port(self):
+        self.assertEqual(decode_ports("MIDA0000"), [])
+
+    def test_refuses_what_is_not_a_port_list(self):
+        with self.assertRaisesRegex(ValueError, "not a port list"):
+            decode_ports("Ableton")
+
+    def test_refuses_a_list_longer_than_its_count(self):
+        with self.assertRaisesRegex(ValueError, "does not end where its count says"):
+            decode_ports(self.REAL + "0003xyz")
+
+    def test_read_ports_says_where_the_list_stops(self):
+        names, end = read_ports("MID2MIDA00010007Abletonppqqrr", 4)
+        self.assertEqual((names, "MID2MIDA00010007Abletonppqqrr"[end:]), (["Ableton"], "ppqqrr"))
+
+
+class InPorts(unittest.TestCase):
+    def t(self, incoming):
+        t = Translator()
+        t.incoming = incoming
+        return t
+
+    def test_mid3_names_ports_in_port_elements(self):
+        self.assertEqual(self.t(IN.format(ch=0, n=1)).in_ports, ["Keys"])
+
+    def test_mid2_carries_a_port_list_after_its_prefix(self):
+        self.assertEqual(self.t("MID2MIDA00010007Abletonppqqrr").in_ports, ["Ableton"])
+
+    def test_no_port_means_the_defaults(self):
+        self.assertEqual(self.t("MID2ppqqrr").in_ports, [])
+        self.assertEqual(self.t('MID3<Incoming Action="MIDI"><Simple/></Incoming>').in_ports, [])
 
 
 class BomeRunning(unittest.TestCase):

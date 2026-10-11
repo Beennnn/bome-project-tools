@@ -50,7 +50,9 @@ SEVEN RULES, each paid for at least once:
     with no separator. Get that count wrong and the extra rules are silently ignored.
 
 7.  THE XML PREFIX NAMES THE ACTION TYPE: `MID3` for MIDI, `Prfm` for a Perform. It
-    is not decorative -- Bome uses it to pick its parser.
+    is not decorative -- Bome uses it to pick its parser. `MID2` is an older MIDI
+    form, still written for raw-pattern actions: no XML, a MIDA port list right after
+    the prefix (`MID2MIDA00010007Abletonppqqrr`), then the pattern.
 
 AND THE MIDI ROUTER, which lives in the PROJECT, not in the settings (.bmts) file:
 
@@ -155,6 +157,17 @@ class Translator:
         v = m.group(1)
         return int(v, 16) if v.startswith("0x") else int(v)
 
+    @property
+    def in_ports(self) -> list[str]:
+        """Ports named on the incoming action itself -- empty means "the defaults".
+
+        Two encodings: `MID3` names them in <Port> elements, the older `MID2` (still
+        written by 1.9.2 for raw-pattern actions) as a MIDA list right after the prefix.
+        """
+        if self.incoming.startswith("MID2MIDA"):
+            return read_ports(self.incoming, 4)[0]
+        return re.findall(r"<Port>([^<]*)</Port>", self.incoming)
+
     def rules(self) -> list[str]:
         """The declared rules, as written. See rule 6.
 
@@ -232,6 +245,38 @@ class Preset:
             return line.split("=", 1)[0]
 
         return f"[Preset.{self.number}]\n" + "\n".join(sorted(lines, key=rank))
+
+
+def decode_ports(value: str) -> list[str]:
+    """Port names out of a `DefaultInPorts` / `DefaultOutPorts` value.
+
+        MIDA 0002 0007 Ableton 0008 [10]_drm       (spaces added for reading)
+
+    `MIDA`, then the COUNT in four hex digits, then for each port its LENGTH in four
+    hex digits followed by the name. `MIDA0000` is "no default". Read off real files
+    on 2026-10-11, where the lengths check out against the names they precede.
+    """
+    names, end = read_ports(value)
+    if end != len(value):
+        raise ValueError(f"port list does not end where its count says: {value!r}")
+    return names
+
+
+def read_ports(text: str, start: int = 0) -> tuple[list[str], int]:
+    """A MIDA port list beginning at `start` -> (names, index just past it).
+
+    The same encoding also opens a `MID2` action -- `MID2MIDA00010007Ableton…` -- where
+    the list is followed by the message pattern, so the caller needs to know where the
+    list stops.
+    """
+    if text[start : start + 4] != "MIDA":
+        raise ValueError(f"not a port list: {text[start : start + 20]!r}")
+    count, pos, names = int(text[start + 4 : start + 8], 16), start + 8, []
+    for _ in range(count):
+        size = int(text[pos : pos + 4], 16)
+        names.append(text[pos + 4 : pos + 4 + size])
+        pos += 4 + size
+    return names, pos
 
 
 @dataclass(frozen=True)
