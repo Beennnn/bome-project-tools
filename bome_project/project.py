@@ -77,6 +77,19 @@ FIELDS = ("Name", "Incoming", "Outgoing", "Options")
 EMPTY = "None"                     # how an absent outgoing action is written
 
 
+def section_end(text: str, start: int) -> int:
+    """Index of the newline that opens the NEXT section -- any section -- or -1.
+
+    Not just the next `[Preset.`: a saved project ends with `[Project]` and
+    `[Signatures]` after its last preset. Searching for `[Preset.` only made the last
+    preset run to the end of the file, so their keys were read as preset keys, and
+    writing that preset -- even unchanged -- folded them into it and dropped both
+    headers. Found on 2026-10-11 by the first round-trip test of the last preset.
+    """
+    m = re.compile(r"\n\[").search(text, start)
+    return m.start() if m else -1
+
+
 def bome_running() -> bool:
     """True when MIDI Translator Pro is running.
 
@@ -216,7 +229,7 @@ class Project:
     def _split(self) -> None:
         for m in re.finditer(r"^\[Preset\.(\d+)\]$", self.text, re.M):
             num = int(m.group(1))
-            end = self.text.find("\n[Preset.", m.end())
+            end = section_end(self.text, m.end())
             body = self.text[m.end():end if end > 0 else len(self.text)]
             p = Preset(num)
             for line in body.split("\n"):
@@ -237,7 +250,7 @@ class Project:
         m = re.search(r"^\[Preset\.%d\]$" % preset, self.text, re.M)
         if not m:
             raise LookupError(f"[Preset.{preset}] not found")
-        end = self.text.find("\n[Preset.", m.end())
+        end = section_end(self.text, m.end())
         # The backup name carries the PRESET, and an existing file is never overwritten.
         # A name with second resolution alone collides as soon as two presets are written
         # in the same second -- and each copy2 then overwrote the previous backup, so what
