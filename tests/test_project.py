@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest import mock
 
 from bome_project import project
-from bome_project.project import Preset, Project, Translator
+from bome_project.project import Preset, Project, Route, Translator
 
 IN = (
     'MID3<Incoming Action="MIDI"><Ports><Port>Keys</Port></Ports>'
@@ -191,6 +191,48 @@ class Write(TempProject):
             proj.write(0)
         self.assertEqual(self.path.read_text(encoding="utf-8"), FIXTURE)
         self.assertEqual(self.backups(), [])
+
+
+# The router section as a real project carries it: before the first preset.
+ROUTES = "[MIDI.routes]\nIn0=[1-9]_keyb\nOut0=Ableton\nIn1=Keys\nOut1=Ableton\nIn2=Keys\nOut2=Synth"
+WITH_ROUTES = FIXTURE.replace("\n\n[Preset.0]", "\n\n" + ROUTES + "\n\n[Preset.0]", 1)
+
+
+class Routes(TempProject):
+    def load(self, text):
+        self.path.write_text(text, encoding="utf-8")
+        return Project(self.path)
+
+    def test_reads_each_in_out_pair_in_index_order(self):
+        self.assertEqual(
+            self.load(WITH_ROUTES).routes,
+            [
+                Route(0, "[1-9]_keyb", "Ableton"),
+                Route(1, "Keys", "Ableton"),
+                Route(2, "Keys", "Synth"),  # one port, two destinations: two routes
+            ],
+        )
+
+    def test_a_project_without_a_router_has_no_routes(self):
+        self.assertEqual(Project(self.path).routes, [])
+
+    def test_the_router_does_not_disturb_the_presets(self):
+        proj = self.load(WITH_ROUTES)
+        self.assertEqual(sorted(proj.presets), [0, 1, 2])
+        proj.write(0)
+        self.assertEqual(self.path.read_text(encoding="utf-8"), WITH_ROUTES)
+
+    def test_comments_and_blank_lines_are_skipped(self):
+        text = WITH_ROUTES.replace("In1=Keys", "; a comment\nIn1=Keys")
+        self.assertEqual(len(self.load(text).routes), 3)
+
+    def test_an_unknown_key_raises_rather_than_being_dropped(self):
+        with self.assertRaisesRegex(ValueError, "unknown line 'Options0=Actv01'"):
+            _ = self.load(WITH_ROUTES.replace("Out2=Synth", "Out2=Synth\nOptions0=Actv01")).routes
+
+    def test_a_route_missing_its_destination_raises(self):
+        with self.assertRaisesRegex(ValueError, r"route 2 has only \['In'\]"):
+            _ = self.load(WITH_ROUTES.replace("\nOut2=Synth", "")).routes
 
 
 class BomeRunning(unittest.TestCase):

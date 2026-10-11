@@ -248,6 +248,21 @@ class Report(unittest.TestCase):
         early = self.section("early exits")
         self.assertIn("'if(pp==0)execute' fires before ka/rr is assigned", early)
 
+    def test_a_project_without_a_router_says_so(self):
+        self.assertRegex(self.section("MIDI router"), r"\n  none\n")
+
+    def test_the_router_is_listed(self):
+        text = FIXTURE.replace(
+            "\n\n[Preset.0]", "\n\n[MIDI.routes]\nIn0=Keys\nOut0=Ableton\n\n[Preset.0]", 1
+        )
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "routed.bmtp"
+            path.write_text(text, encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                audit.main(path)
+        self.assertRegex(out.getvalue(), r"== MIDI router.*==\n  Keys +-> Ableton\n")
+
     def test_noexecute_is_not_an_early_execute(self):
         self.assertNotIn("noexecute' fires", self.section("early exits"))
 

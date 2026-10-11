@@ -52,6 +52,17 @@ SEVEN RULES, each paid for at least once:
 7.  THE XML PREFIX NAMES THE ACTION TYPE: `MID3` for MIDI, `Prfm` for a Perform. It
     is not decorative -- Bome uses it to pick its parser.
 
+AND THE MIDI ROUTER, which lives in the PROJECT, not in the settings (.bmts) file:
+
+    [MIDI.routes]                  before the first preset, absent when there is none
+    In0=[1-9]_keyb                 route 0: from this port...
+    Out0=Ableton                   ...to this one, untouched (thru, no translator)
+    In1=…
+
+One In/Out pair per index, one destination per pair: a port sent to two places is two
+routes. Observed on a single real project (5 routes, 2026-10-11), so `Project.routes`
+refuses any other shape rather than guess at it.
+
 AND TWO CONSTRAINTS THAT ARE NOT IN THE FILE:
 
 8.  BOME REWRITES THE FILE FROM MEMORY on save. Editing while it runs means losing
@@ -223,6 +234,16 @@ class Preset:
         return f"[Preset.{self.number}]\n" + "\n".join(sorted(lines, key=rank))
 
 
+@dataclass(frozen=True)
+class Route:
+    """One connection of the MIDI Router: every message from `source` goes to
+    `destination` as is -- thru without spending a translator, and without remapping."""
+
+    index: int
+    source: str
+    destination: str
+
+
 class Project:
     """A .bmtp file, read into objects and written back byte-identical when unchanged."""
 
@@ -290,6 +311,35 @@ class Project:
         self.path.write_text(fresh, encoding="utf-8", errors="surrogateescape")
         self.text = fresh
         return backup
+
+    @property
+    def routes(self) -> list[Route]:
+        """The MIDI Router's connections, in index order. Read-only.
+
+        Strict on purpose: the section has been seen in one project only, so a key that
+        is not In<N>/Out<N>, or an index missing its other half, raises instead of being
+        skipped -- a reader that silently drops a route would report a router that is
+        not the one Bome runs.
+        """
+        m = re.search(r"^\[MIDI\.routes\]$", self.text, re.M)
+        if not m:
+            return []
+        end = section_end(self.text, m.end())
+        body = self.text[m.end() : end if end > 0 else len(self.text)]
+        ends: dict[int, dict[str, str]] = {}
+        for line in body.split("\n"):
+            if not line.strip() or line.startswith(";"):
+                continue
+            key = re.match(r"^(In|Out)(\d+)=(.*)$", line)
+            if not key:
+                raise ValueError(f"[MIDI.routes]: unknown line {line!r}")
+            ends.setdefault(int(key.group(2)), {})[key.group(1)] = key.group(3)
+        routes = []
+        for i in sorted(ends):
+            if set(ends[i]) != {"In", "Out"}:
+                raise ValueError(f"[MIDI.routes]: route {i} has only {sorted(ends[i])}")
+            routes.append(Route(i, ends[i]["In"], ends[i]["Out"]))
+        return routes
 
     def is_signed(self) -> bool | None:
         """None when the file carries no signature. See rule 9 -- indicative only: only

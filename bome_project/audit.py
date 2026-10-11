@@ -213,6 +213,13 @@ def main(path):
         % ", ".join("CC%d=%s" % (k, v) for k, v in sorted(CHANNEL_MODE.items()))
     )
 
+    print("\n== MIDI router: port-to-port thru, no translator involved ==")
+    routes = Project(Path(path)).routes
+    for r in routes:
+        print("  %-30s -> %s" % (r.source, r.destination))
+    if not routes:
+        print("  none")
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

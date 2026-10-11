@@ -113,7 +113,9 @@ a port named on the translator **overrides** the preset default, so setting the 
 without also removing those names leaves it pure decoration.
 
 Bome's built-in MIDI Router does port-to-port thru without spending a translator, but it
-does not remap: it replaces nothing whose translators change channel.
+does not remap: it replaces nothing whose translators change channel. It is stored in the
+**project**, as `[MIDI.routes]` before the first preset, not in the settings file;
+`Project(path).routes` reads it and the audit lists it.
 
 `plans/rig-zones.py` shows the shape: cases that assert what comes out, and **cases that
 assert silence**. The second kind is not optional — a plan that misses its target
@@ -211,7 +213,8 @@ which came out identical. That repository is archived and points here.
 
 ## Not done yet
 
-- Nothing reads or writes the MIDI Router section of the settings file.
+- The MIDI Router is read but never written, and its format was observed on one project
+  only -- the reader refuses any shape it has not seen.
 - One rig, one Bome version (1.9.2), macOS only. Everything here is verified, but
   verified once.
 
