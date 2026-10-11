@@ -11,7 +11,10 @@
 
 For anyone whose MT Pro project has grown past what is comfortable to check by eye: a live rig, a studio router, a controller remap with dozens of translators.
 
-> **Unofficial.** This project is not affiliated with Bome Software. Bome does not document the `.bmtp` format: everything here was worked out by editing real projects and reopening them in MIDI Translator Pro 1.9.2, and Bome's support team has helped correct parts of it on the [Bome forum](https://forum.bome.com/t/7925). Corrections are welcome.
+> [!IMPORTANT]
+> **Unofficial — written by a user, not by Bome.** The author does not work for Bome Software and this project is not affiliated with, endorsed or supported by Bome. Nothing here is official guidance.
+>
+> Bome does not document the `.bmtp` format: everything here was worked out by editing real projects and reopening them in MIDI Translator Pro 1.9.2. Bome's support team has kindly corrected parts of it on the [Bome forum](https://forum.bome.com/t/7925), which does not make it official. Corrections are welcome. Editing a project is at your own risk: keep the backups the tools make.
 
 ## Why use it
 
@@ -314,6 +317,8 @@ mypy
 ## Credits and license
 
 Thanks to Steve Caldwell of Bome, who corrected parts of the variable-scope rules, and to Florian of Bome for his feedback, on the [Bome forum](https://forum.bome.com/t/7925).
+
+Bome, Bome MIDI Translator, MIDI Translator Pro, BomeBox and MT Player are names of Bome Software products, used here only to say what these tools work with. This is an independent project by a user, with no affiliation to Bome Software.
 
 This repository replaces the earlier `bome-variable-naming` repository, whose audit and convention now live here.
 
